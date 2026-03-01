@@ -1,6 +1,12 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ToolModule } from "../types.ts";
 import { runJXA, escJS } from "../applescript.ts";
+import {
+  assertNoUnknownFields,
+  assertRecord,
+  optionalString,
+  requireString,
+} from "./validation.ts";
 
 const tools: Tool[] = [
   {
@@ -95,7 +101,7 @@ async function handleCall(
 
       return runJXA(`
         const app = Application("Contacts");
-        const results = app.people.whose({name: {_contains: "${query}"}});
+        const results = app.people.whose({ name: {_contains: "${query}"} });
         const firstNames = results.firstName();
         const lastNames = results.lastName();
         const orgs = results.organization();
@@ -109,11 +115,15 @@ async function handleCall(
 
       return runJXA(`
         const app = Application("Contacts");
-        const results = app.people.whose({name: {_contains: "${contactName}"}})();
-        if (results.length === 0) { "Contact not found: ${contactName}"; }
-        else {
-          const p = results[0];
-          const lines = ["Name: " + (p.firstName() || "") + " " + (p.lastName() || "")];
+        const results = app.people.whose({ name: {_contains: "${contactName}"} });
+        if (results.length === 0) {
+          throw new Error("Contact not found: ${contactName}");
+        }
+        if (results.length > 1) {
+          throw new Error("Multiple contacts matching: ${contactName}");
+        }
+        const p = results[0];
+        const lines = ["Name: " + (p.firstName() || "") + " " + (p.lastName() || "")];
           const org = p.organization();
           if (org) lines.push("Organization: " + org);
           const title = p.jobTitle();
@@ -122,7 +132,6 @@ async function handleCall(
           for (const ph of p.phones()) lines.push("Phone (" + ph.label() + "): " + ph.value());
           for (const a of p.addresses()) lines.push("Address (" + a.label() + "): " + a.formattedAddress());
           lines.join("\\n");
-        }
       `);
     }
 
@@ -155,13 +164,16 @@ async function handleCall(
 
       return runJXA(`
         const app = Application("Contacts");
-        const firstNames = app.people.firstName();
-        const lastNames = app.people.lastName();
-        const idx = firstNames.findIndex((f, i) => {
-          return ((f || "") + " " + (lastNames[i] || "")).trim() === "${contactName}";
-        });
-        if (idx === -1) { "Contact not found: ${contactName}"; }
-        else { app.delete(app.people[idx]); app.save(); "Contact deleted: ${contactName}"; }
+        const matches = app.people.whose({ name: {_contains: "${contactName}"} });
+        if (matches.length === 0) {
+          throw new Error("Contact not found: ${contactName}");
+        }
+        if (matches.length > 1) {
+          throw new Error("Multiple contacts matching: ${contactName}");
+        }
+        app.delete(matches[0]);
+        app.save();
+        "Contact deleted: ${contactName}";
       `);
     }
 
@@ -170,4 +182,53 @@ async function handleCall(
   }
 }
 
-export default { tools, handleCall } satisfies ToolModule;
+function parseArgs(name: string, rawArgs: Record<string, unknown>): Record<string, unknown> {
+  const args = assertRecord(rawArgs, `contacts.${name}`);
+  switch (name) {
+    case "contacts_list":
+      assertNoUnknownFields(args, [], "contacts_list");
+      return {};
+
+    case "contacts_search": {
+      assertNoUnknownFields(args, ["query"], "contacts_search");
+      return {
+        query: requireString(args, "query", "contacts_search"),
+      };
+    }
+
+    case "contacts_get": {
+      assertNoUnknownFields(args, ["name"], "contacts_get");
+      return {
+        name: requireString(args, "name", "contacts_get"),
+      };
+    }
+
+    case "contacts_create": {
+      assertNoUnknownFields(
+        args,
+        ["firstName", "lastName", "email", "phone", "org", "title"],
+        "contacts_create"
+      );
+      return {
+        firstName: requireString(args, "firstName", "contacts_create"),
+        lastName: requireString(args, "lastName", "contacts_create"),
+        email: optionalString(args, "email", "contacts_create"),
+        phone: optionalString(args, "phone", "contacts_create"),
+        org: optionalString(args, "org", "contacts_create"),
+        title: optionalString(args, "title", "contacts_create"),
+      };
+    }
+
+    case "contacts_delete": {
+      assertNoUnknownFields(args, ["name"], "contacts_delete");
+      return {
+        name: requireString(args, "name", "contacts_delete"),
+      };
+    }
+
+    default:
+      throw new Error(`Unknown contacts tool: ${name}`);
+  }
+}
+
+export default { tools, parseArgs, handleCall } satisfies ToolModule;

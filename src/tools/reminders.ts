@@ -1,6 +1,16 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ToolModule } from "../types.ts";
 import { runJXA, escJS } from "../applescript.ts";
+import {
+  assertNoUnknownFields,
+  assertRecord,
+  optionalBoolean,
+  optionalNumber,
+  optionalString,
+  requireDateString,
+  requireString,
+  ValidationError,
+} from "./validation.ts";
 
 const tools: Tool[] = [
   {
@@ -94,7 +104,10 @@ async function handleCall(
 
       return runJXA(`
         const app = Application("Reminders");
-        const list = app.lists.byName("${listName}");
+        const lists = app.lists.whose({ name: "${listName}" });
+        if (lists.length === 0) throw new Error("Reminder list not found: ${listName}");
+        if (lists.length > 1) throw new Error("Multiple reminder lists match: ${listName}");
+        const list = lists[0];
         const allNames = list.reminders.name();
         const allDues = list.reminders.dueDate();
         const allDone = list.reminders.completed();
@@ -112,18 +125,20 @@ async function handleCall(
     case "reminders_create": {
       const rName = escJS(args.name as string);
       const listName = escJS(args.list as string);
+      const priority = args.priority as number | undefined;
+      const dueDate = args.dueDate as string | undefined;
 
       const propParts = [`name: "${rName}"`];
-      if (args.dueDate)
-        propParts.push(`dueDate: new Date("${escJS(args.dueDate as string)}")`);
-      if (args.notes)
-        propParts.push(`body: "${escJS(args.notes as string)}"`);
-      if (args.priority !== undefined)
-        propParts.push(`priority: ${args.priority as number}`);
+      if (dueDate) propParts.push(`dueDate: new Date("${escJS(dueDate)}")`);
+      if (args.notes) propParts.push(`body: "${escJS(args.notes as string)}"`);
+      if (priority !== undefined) propParts.push(`priority: ${priority}`);
 
       return runJXA(`
         const app = Application("Reminders");
-        const list = app.lists.byName("${listName}");
+        const lists = app.lists.whose({ name: "${listName}" });
+        if (lists.length === 0) throw new Error("Reminder list not found: ${listName}");
+        if (lists.length > 1) throw new Error("Multiple reminder lists match: ${listName}");
+        const list = lists[0];
         list.reminders.push(app.Reminder({${propParts.join(", ")}}));
         "Reminder created: ${rName}";
       `);
@@ -135,12 +150,25 @@ async function handleCall(
 
       return runJXA(`
         const app = Application("Reminders");
-        const list = app.lists.byName("${listName}");
+        const lists = app.lists.whose({ name: "${listName}" });
+        if (lists.length === 0) throw new Error("Reminder list not found: ${listName}");
+        if (lists.length > 1) throw new Error("Multiple reminder lists match: ${listName}");
+        const list = lists[0];
         const names = list.reminders.name();
         const completed = list.reminders.completed();
-        const idx = names.findIndex((n, i) => n === "${rName}" && !completed[i]);
-        if (idx === -1) { "Reminder not found: ${rName}"; }
-        else { list.reminders[idx].completed = true; "Reminder completed: ${rName}"; }
+        const idxs = [];
+        for (let i = 0; i < names.length; i++) {
+          if (names[i] === "${rName}" && !completed[i]) idxs.push(i);
+        }
+        if (idxs.length === 0) {
+          throw new Error("Reminder not found: ${rName}");
+        }
+        if (idxs.length > 1) {
+          throw new Error("Multiple pending reminders match: ${rName}");
+        }
+        const idx = idxs[0];
+        list.reminders[idx].completed = true;
+        return "Reminder completed: ${rName}";
       `);
     }
 
@@ -150,11 +178,23 @@ async function handleCall(
 
       return runJXA(`
         const app = Application("Reminders");
-        const list = app.lists.byName("${listName}");
+        const lists = app.lists.whose({ name: "${listName}" });
+        if (lists.length === 0) throw new Error("Reminder list not found: ${listName}");
+        if (lists.length > 1) throw new Error("Multiple reminder lists match: ${listName}");
+        const list = lists[0];
         const names = list.reminders.name();
-        const idx = names.indexOf("${rName}");
-        if (idx === -1) { "Reminder not found: ${rName}"; }
-        else { app.delete(list.reminders[idx]); "Reminder deleted: ${rName}"; }
+        const idxs = [];
+        for (let i = 0; i < names.length; i++) {
+          if (names[i] === "${rName}") idxs.push(i);
+        }
+        if (idxs.length === 0) {
+          throw new Error("Reminder not found: ${rName}");
+        }
+        if (idxs.length > 1) {
+          throw new Error("Multiple reminders match: ${rName}");
+        }
+        app.delete(list.reminders[idxs[0]]);
+        return "Reminder deleted: ${rName}";
       `);
     }
 
@@ -163,4 +203,60 @@ async function handleCall(
   }
 }
 
-export default { tools, handleCall } satisfies ToolModule;
+function parseArgs(name: string, rawArgs: Record<string, unknown>): Record<string, unknown> {
+  const args = assertRecord(rawArgs, `reminders.${name}`);
+  switch (name) {
+    case "reminders_list_lists":
+      assertNoUnknownFields(args, [], "reminders_list_lists");
+      return {};
+
+    case "reminders_list": {
+      assertNoUnknownFields(args, ["listName", "showCompleted"], "reminders_list");
+      return {
+        listName: requireString(args, "listName", "reminders_list"),
+        showCompleted: optionalBoolean(args, "showCompleted", "reminders_list") ?? false,
+      };
+    }
+
+    case "reminders_create": {
+      assertNoUnknownFields(args, ["name", "list", "dueDate", "notes", "priority"], "reminders_create");
+      const priority = optionalNumber(args, "priority", "reminders_create", {
+        integer: true,
+        min: 0,
+        max: 9,
+      });
+      const dueDate = optionalString(args, "dueDate", "reminders_create");
+      if (dueDate) requireDateString({ dueDate }, "dueDate", "reminders_create");
+      if (priority !== undefined && ![0, 1, 5, 9].includes(priority)) {
+        throw new ValidationError("Tool \\\"reminders_create\\\": priority must be 0, 1, 5, or 9.");
+      }
+      return {
+        name: requireString(args, "name", "reminders_create"),
+        list: requireString(args, "list", "reminders_create"),
+        dueDate,
+        notes: optionalString(args, "notes", "reminders_create"),
+        priority,
+      };
+    }
+
+    case "reminders_complete": {
+      assertNoUnknownFields(args, ["name", "list"], "reminders_complete");
+      return {
+        name: requireString(args, "name", "reminders_complete"),
+        list: requireString(args, "list", "reminders_complete"),
+      };
+    }
+
+    case "reminders_delete":
+      assertNoUnknownFields(args, ["name", "list"], "reminders_delete");
+      return {
+        name: requireString(args, "name", "reminders_delete"),
+        list: requireString(args, "list", "reminders_delete"),
+      };
+
+    default:
+      throw new Error(`Unknown reminders tool: ${name}`);
+  }
+}
+
+export default { tools, parseArgs, handleCall } satisfies ToolModule;

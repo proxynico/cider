@@ -6,7 +6,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "bun run src/index.ts"
+    "start": "bun run src/index.ts",
+    "typecheck": "bunx tsc --noEmit",
+    "test": "bunx tsc --noEmit && bun test"
   },
   "devDependencies": {
     "@types/bun": "latest"

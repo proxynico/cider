@@ -1,6 +1,13 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ToolModule } from "../types.ts";
-import { runAppleScript, escAS, asDateExpr } from "../applescript.ts";
+import { buildDateRangePredicate, asDateExpr, escAS, runAppleScript } from "../applescript.ts";
+import {
+  assertNoUnknownFields,
+  assertRecord,
+  optionalString,
+  requireDateString,
+  requireString,
+} from "./validation.ts";
 
 const tools: Tool[] = [
   {
@@ -109,15 +116,21 @@ async function handleCall(
     case "calendar_list_events": {
       const startExpr = asDateExpr(args.startDate as string);
       const endExpr = asDateExpr(args.endDate as string);
-      const calName = args.calendarName
-        ? escAS(args.calendarName as string)
-        : null;
+      const calName = args.calendarName ? escAS(args.calendarName as string) : null;
 
       if (calName) {
+        const predicate = buildDateRangePredicate(startExpr, endExpr);
         return runAppleScript(`
           tell application "Calendar"
+            set targetCalendars to (every calendar whose name is "${calName}")
+            if (count of targetCalendars) is 0 then
+              error "Calendar not found: ${calName}"
+            end if
+            if (count of targetCalendars) > 1 then
+              error "Multiple calendars match: ${calName}"
+            end if
             set output to ""
-            set theEvents to (every event of calendar "${calName}" whose start date ≥ ${startExpr} and start date ≤ ${endExpr})
+            set theEvents to (every event of item 1 of targetCalendars whose ${predicate})
             repeat with e in theEvents
               set output to output & summary of e & " | " & (start date of e as string) & " - " & (end date of e as string) & linefeed
             end repeat
@@ -127,11 +140,13 @@ async function handleCall(
         `);
       }
 
+      const allPredicate = buildDateRangePredicate(startExpr, endExpr);
+
       return runAppleScript(`
         tell application "Calendar"
           set output to ""
           repeat with c in calendars
-            set theEvents to (every event of c whose start date ≥ ${startExpr} and start date ≤ ${endExpr})
+            set theEvents to (every event of c whose ${allPredicate})
             repeat with e in theEvents
               set output to output & "[" & name of c & "] " & summary of e & " | " & (start date of e as string) & " - " & (end date of e as string) & linefeed
             end repeat
@@ -169,28 +184,28 @@ async function handleCall(
     }
 
     case "calendar_update_event": {
-      const title = escAS(args.title as string);
       const cal = escAS(args.calendar as string);
       const updates: string[] = [];
+      if (args.newTitle) updates.push(`set summary of e to "${escAS(args.newTitle as string)}"`);
+      if (args.newStart) updates.push(`set start date of e to ${asDateExpr(args.newStart as string)}`);
+      if (args.newEnd) updates.push(`set end date of e to ${asDateExpr(args.newEnd as string)}`);
+      if (args.newLocation) updates.push(`set location of e to "${escAS(args.newLocation as string)}"`);
 
-      if (args.newTitle)
-        updates.push(`set summary of e to "${escAS(args.newTitle as string)}"`);
-      if (args.newStart)
-        updates.push(`set start date of e to ${asDateExpr(args.newStart as string)}`);
-      if (args.newEnd)
-        updates.push(`set end date of e to ${asDateExpr(args.newEnd as string)}`);
-      if (args.newLocation)
-        updates.push(`set location of e to "${escAS(args.newLocation as string)}"`);
-
-      if (updates.length === 0) return "No updates specified";
+      if (updates.length === 0) {
+        throw new Error("No updates specified");
+      }
 
       return runAppleScript(`
         tell application "Calendar"
-          set theEvents to (every event of calendar "${cal}" whose summary is "${title}")
-          if (count of theEvents) is 0 then return "Event not found: ${title}"
+          set targetCalendars to (every calendar whose name is "${cal}")
+          if (count of targetCalendars) is 0 then error "Calendar not found: ${cal}"
+          if (count of targetCalendars) > 1 then error "Multiple calendars match: ${cal}"
+          set theEvents to (every event of item 1 of targetCalendars whose summary is "${escAS(args.title as string)}")
+          if (count of theEvents) is 0 then error "Event not found: ${escAS(args.title as string)}"
+          if (count of theEvents) > 1 then error "Multiple events match: ${escAS(args.title as string)}"
           set e to item 1 of theEvents
           ${updates.join("\n          ")}
-          return "Event updated: ${title}"
+          return "Event updated: ${escAS(args.title as string)}"
         end tell
       `);
     }
@@ -201,8 +216,12 @@ async function handleCall(
 
       return runAppleScript(`
         tell application "Calendar"
-          set theEvents to (every event of calendar "${cal}" whose summary is "${title}")
-          if (count of theEvents) is 0 then return "Event not found: ${title}"
+          set targetCalendars to (every calendar whose name is "${cal}")
+          if (count of targetCalendars) is 0 then error "Calendar not found: ${cal}"
+          if (count of targetCalendars) > 1 then error "Multiple calendars match: ${cal}"
+          set theEvents to (every event of item 1 of targetCalendars whose summary is "${title}")
+          if (count of theEvents) is 0 then error "Event not found: ${title}"
+          if (count of theEvents) > 1 then error "Multiple events match: ${title}"
           delete item 1 of theEvents
           return "Event deleted: ${title}"
         end tell
@@ -214,4 +233,69 @@ async function handleCall(
   }
 }
 
-export default { tools, handleCall } satisfies ToolModule;
+function parseArgs(name: string, rawArgs: Record<string, unknown>): Record<string, unknown> {
+  const args = assertRecord(rawArgs, `calendar.${name}`);
+  switch (name) {
+    case "calendar_list_calendars":
+      assertNoUnknownFields(args, [], "calendar_list_calendars");
+      return {};
+
+    case "calendar_list_events": {
+      assertNoUnknownFields(args, ["startDate", "endDate", "calendarName"], "calendar_list_events");
+      return {
+        startDate: requireDateString(args, "startDate", "calendar_list_events"),
+        endDate: requireDateString(args, "endDate", "calendar_list_events"),
+        calendarName: optionalString(args, "calendarName", "calendar_list_events"),
+      };
+    }
+
+    case "calendar_create_event": {
+      assertNoUnknownFields(
+        args,
+        ["title", "startDate", "endDate", "calendar", "location", "notes"],
+        "calendar_create_event"
+      );
+      return {
+        title: requireString(args, "title", "calendar_create_event"),
+        startDate: requireDateString(args, "startDate", "calendar_create_event"),
+        endDate: requireDateString(args, "endDate", "calendar_create_event"),
+        calendar: optionalString(args, "calendar", "calendar_create_event"),
+        location: optionalString(args, "location", "calendar_create_event"),
+        notes: optionalString(args, "notes", "calendar_create_event"),
+      };
+    }
+
+    case "calendar_update_event": {
+      assertNoUnknownFields(
+        args,
+        ["title", "calendar", "newTitle", "newStart", "newEnd", "newLocation"],
+        "calendar_update_event"
+      );
+      const newStart = optionalString(args, "newStart", "calendar_update_event");
+      const newEnd = optionalString(args, "newEnd", "calendar_update_event");
+      if (newStart) requireDateString({ newStart }, "newStart", "calendar_update_event");
+      if (newEnd) requireDateString({ newEnd }, "newEnd", "calendar_update_event");
+      return {
+        title: requireString(args, "title", "calendar_update_event"),
+        calendar: requireString(args, "calendar", "calendar_update_event"),
+        newTitle: optionalString(args, "newTitle", "calendar_update_event"),
+        newStart,
+        newEnd,
+        newLocation: optionalString(args, "newLocation", "calendar_update_event"),
+      };
+    }
+
+    case "calendar_delete_event": {
+      assertNoUnknownFields(args, ["title", "calendar"], "calendar_delete_event");
+      return {
+        title: requireString(args, "title", "calendar_delete_event"),
+        calendar: requireString(args, "calendar", "calendar_delete_event"),
+      };
+    }
+
+    default:
+      throw new Error(`Unknown calendar tool: ${name}`);
+  }
+}
+
+export default { tools, parseArgs, handleCall } satisfies ToolModule;

@@ -115,3 +115,15 @@ To add a new tool, add the definition and handler to the appropriate `src/tools/
 ## License
 
 MIT
+
+## Validation and failures
+
+- Tool inputs are validated before AppleScript/JXA execution.
+- Missing/invalid arguments return MCP `isError` responses.
+- Missing entities and ambiguous matches inside scripts now return explicit errors.
+- Date parameters expect ISO 8601 input and are validated before execution.
+
+## Notes about repository guidance
+
+- This repository does not currently include `claude.md`.
+- Source-of-truth local notes are tracked in `.claude/napkin.md`.

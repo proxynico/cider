@@ -20,10 +20,13 @@ for (const mod of modules) {
     server.tool(
       tool.name,
       tool.description ?? "",
-      tool.inputSchema.properties as Record<string, unknown>,
+      tool.inputSchema as Record<string, unknown>,
       async (args: Record<string, unknown>) => {
         try {
-          const result = await mod.handleCall(tool.name, args);
+          const parsedArgs = mod.parseArgs
+            ? mod.parseArgs(tool.name, args)
+            : args;
+          const result = await mod.handleCall(tool.name, parsedArgs);
           return { content: [{ type: "text" as const, text: result }] };
         } catch (err) {
           const message =
