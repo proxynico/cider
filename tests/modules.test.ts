@@ -107,6 +107,13 @@ describe("parseArgs valid inputs", () => {
     ).not.toThrow();
   });
 
+  test("reminders_list defaults showCompleted to false", () => {
+    expect(reminders.parseArgs!("reminders_list", { listName: "Inbox" })).toEqual({
+      listName: "Inbox",
+      showCompleted: false,
+    });
+  });
+
   test("reminders_create", () => {
     expect(() =>
       reminders.parseArgs!("reminders_create", { name: "Buy milk", list: "Inbox" })

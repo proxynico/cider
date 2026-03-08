@@ -112,10 +112,11 @@ async function handleCall(
 
     case "contacts_get": {
       const contactName = escJS(args.name as string);
+      const matchExpr = `app.people.whose({ name: {_contains: "${contactName}"} })`;
 
       return runJXA(`
         const app = Application("Contacts");
-        const results = app.people.whose({ name: {_contains: "${contactName}"} });
+        const results = ${matchExpr};
         if (results.length === 0) {
           throw new Error("Contact not found: ${contactName}");
         }
@@ -161,10 +162,11 @@ async function handleCall(
 
     case "contacts_delete": {
       const contactName = escJS(args.name as string);
+      const matchExpr = `app.people.whose({ name: {_contains: "${contactName}"} })`;
 
       return runJXA(`
         const app = Application("Contacts");
-        const matches = app.people.whose({ name: {_contains: "${contactName}"} });
+        const matches = ${matchExpr};
         if (matches.length === 0) {
           throw new Error("Contact not found: ${contactName}");
         }

@@ -47,8 +47,14 @@ export function buildDateRangePredicate(
   inclusive = true
 ): string {
   return inclusive
-    ? `start date ≥ ${startExpr} and start date ≤ ${endExpr}`
-    : `start date > ${startExpr} and start date < ${endExpr}`;
+    ? `start date is greater than or equal to ${startExpr} and start date is less than or equal to ${endExpr}`
+    : `start date is greater than ${startExpr} and start date is less than ${endExpr}`;
+}
+
+function readProcessPipe(
+  pipe: ReturnType<typeof Bun.spawn>["stdout"] | ReturnType<typeof Bun.spawn>["stderr"]
+): Promise<string> {
+  return pipe instanceof ReadableStream ? new Response(pipe).text() : Promise.resolve("");
 }
 
 async function runOsascript(
@@ -56,8 +62,9 @@ async function runOsascript(
   script: string,
   timeoutMs: number
 ): Promise<string> {
-  let proc: Bun.Process;
-
+  const validatedTimeoutMs = validateTimeoutMs(timeoutMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let proc: ReturnType<typeof Bun.spawn>;
   try {
     proc = Bun.spawn([...args, script], {
       stdout: "pipe",
@@ -68,19 +75,18 @@ async function runOsascript(
     throw new Error(`Failed to run osascript: ${message}`);
   }
 
-  let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       proc.kill();
-      reject(new Error(`osascript timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
+      reject(new Error(`osascript timed out after ${validatedTimeoutMs}ms`));
+    }, validatedTimeoutMs);
   });
 
   try {
     const [stdout, stderr, exitCode] = await Promise.race([
       Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
+        readProcessPipe(proc.stdout),
+        readProcessPipe(proc.stderr),
         proc.exited,
       ]),
       timeout,
@@ -90,15 +96,12 @@ async function runOsascript(
       throw new Error(stderr.trim() || `osascript exited with code ${exitCode}`);
     }
     return stdout.trim();
-  } catch (err) {
-    if (err instanceof Error && err.message.includes("timed out")) {
-      throw err;
-    }
-    throw err;
   } finally {
-    clearTimeout(timer!);
+    if (timer) {
+      clearTimeout(timer);
+    }
     try {
-      if (proc && proc.exitCode === null) {
+      if (proc.exitCode === null) {
         proc.kill();
         await proc.exited;
       }
@@ -110,10 +113,10 @@ async function runOsascript(
 
 /** Run AppleScript via osascript with timeout. */
 export function runAppleScript(script: string, timeoutMs = DEFAULT_TIMEOUT_MS) {
-  return runOsascript(["osascript", "-e"], script, validateTimeoutMs(timeoutMs));
+  return runOsascript(["osascript", "-e"], script, timeoutMs);
 }
 
 /** Run JXA (JavaScript for Automation) via osascript with timeout. */
 export function runJXA(script: string, timeoutMs = DEFAULT_TIMEOUT_MS) {
-  return runOsascript(["osascript", "-l", "JavaScript", "-e"], script, validateTimeoutMs(timeoutMs));
+  return runOsascript(["osascript", "-l", "JavaScript", "-e"], script, timeoutMs);
 }

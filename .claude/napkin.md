@@ -19,4 +19,4 @@
 - Transport: stdio, runs as child process of Claude Code
 - No API keys — relies on macOS Automation permissions
 - Source-of-truth local guidance file: `.claude/napkin.md` (no `claude.md` in repo root)
-- Dead code: `isoToAppleScriptDate` in applescript.ts is unused (only `asDateExpr` is used)
+- Shared runner/escaping logic lives in `src/applescript.ts`

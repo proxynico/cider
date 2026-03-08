@@ -101,13 +101,16 @@ async function handleCall(
     case "reminders_list": {
       const listName = escJS(args.listName as string);
       const showCompleted = args.showCompleted === true;
-
-      return runJXA(`
-        const app = Application("Reminders");
+      const listLookup = `
         const lists = app.lists.whose({ name: "${listName}" });
         if (lists.length === 0) throw new Error("Reminder list not found: ${listName}");
         if (lists.length > 1) throw new Error("Multiple reminder lists match: ${listName}");
         const list = lists[0];
+      `;
+
+      return runJXA(`
+        const app = Application("Reminders");
+        ${listLookup}
         const allNames = list.reminders.name();
         const allDues = list.reminders.dueDate();
         const allDone = list.reminders.completed();
@@ -127,6 +130,12 @@ async function handleCall(
       const listName = escJS(args.list as string);
       const priority = args.priority as number | undefined;
       const dueDate = args.dueDate as string | undefined;
+      const listLookup = `
+        const lists = app.lists.whose({ name: "${listName}" });
+        if (lists.length === 0) throw new Error("Reminder list not found: ${listName}");
+        if (lists.length > 1) throw new Error("Multiple reminder lists match: ${listName}");
+        const list = lists[0];
+      `;
 
       const propParts = [`name: "${rName}"`];
       if (dueDate) propParts.push(`dueDate: new Date("${escJS(dueDate)}")`);
@@ -135,10 +144,7 @@ async function handleCall(
 
       return runJXA(`
         const app = Application("Reminders");
-        const lists = app.lists.whose({ name: "${listName}" });
-        if (lists.length === 0) throw new Error("Reminder list not found: ${listName}");
-        if (lists.length > 1) throw new Error("Multiple reminder lists match: ${listName}");
-        const list = lists[0];
+        ${listLookup}
         list.reminders.push(app.Reminder({${propParts.join(", ")}}));
         "Reminder created: ${rName}";
       `);
@@ -147,13 +153,16 @@ async function handleCall(
     case "reminders_complete": {
       const rName = escJS(args.name as string);
       const listName = escJS(args.list as string);
-
-      return runJXA(`
-        const app = Application("Reminders");
+      const listLookup = `
         const lists = app.lists.whose({ name: "${listName}" });
         if (lists.length === 0) throw new Error("Reminder list not found: ${listName}");
         if (lists.length > 1) throw new Error("Multiple reminder lists match: ${listName}");
         const list = lists[0];
+      `;
+
+      return runJXA(`
+        const app = Application("Reminders");
+        ${listLookup}
         const names = list.reminders.name();
         const completed = list.reminders.completed();
         const idxs = [];
@@ -175,13 +184,16 @@ async function handleCall(
     case "reminders_delete": {
       const rName = escJS(args.name as string);
       const listName = escJS(args.list as string);
-
-      return runJXA(`
-        const app = Application("Reminders");
+      const listLookup = `
         const lists = app.lists.whose({ name: "${listName}" });
         if (lists.length === 0) throw new Error("Reminder list not found: ${listName}");
         if (lists.length > 1) throw new Error("Multiple reminder lists match: ${listName}");
         const list = lists[0];
+      `;
+
+      return runJXA(`
+        const app = Application("Reminders");
+        ${listLookup}
         const names = list.reminders.name();
         const idxs = [];
         for (let i = 0; i < names.length; i++) {

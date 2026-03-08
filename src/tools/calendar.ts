@@ -184,6 +184,7 @@ async function handleCall(
     }
 
     case "calendar_update_event": {
+      const title = escAS(args.title as string);
       const cal = escAS(args.calendar as string);
       const updates: string[] = [];
       if (args.newTitle) updates.push(`set summary of e to "${escAS(args.newTitle as string)}"`);
@@ -200,12 +201,12 @@ async function handleCall(
           set targetCalendars to (every calendar whose name is "${cal}")
           if (count of targetCalendars) is 0 then error "Calendar not found: ${cal}"
           if (count of targetCalendars) > 1 then error "Multiple calendars match: ${cal}"
-          set theEvents to (every event of item 1 of targetCalendars whose summary is "${escAS(args.title as string)}")
-          if (count of theEvents) is 0 then error "Event not found: ${escAS(args.title as string)}"
-          if (count of theEvents) > 1 then error "Multiple events match: ${escAS(args.title as string)}"
+          set theEvents to (every event of item 1 of targetCalendars whose summary is "${title}")
+          if (count of theEvents) is 0 then error "Event not found: ${title}"
+          if (count of theEvents) > 1 then error "Multiple events match: ${title}"
           set e to item 1 of theEvents
           ${updates.join("\n          ")}
-          return "Event updated: ${escAS(args.title as string)}"
+          return "Event updated: ${title}"
         end tell
       `);
     }

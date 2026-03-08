@@ -99,16 +99,17 @@ async function handleCall(
 
     case "notes_list": {
       const folder = args.folder as string | undefined;
-      const emptyMsg = folder ? `No notes in folder ${escAS(folder)}` : "No notes found";
+      const escapedFolder = folder ? escAS(folder) : undefined;
+      const emptyMsg = escapedFolder ? `No notes in folder ${escapedFolder}` : "No notes found";
       const script = folder
         ? `
             tell application "Notes"
-              set matchingFolders to (every folder whose name is "${escAS(folder)}")
+              set matchingFolders to (every folder whose name is "${escapedFolder}")
               if (count of matchingFolders) is 0 then
-                error "Folder not found: ${escAS(folder)}"
+                error "Folder not found: ${escapedFolder}"
               end if
               if (count of matchingFolders) > 1 then
-                error "Multiple folders match: ${escAS(folder)}"
+                error "Multiple folders match: ${escapedFolder}"
               end if
               set theNotes to notes of item 1 of matchingFolders
               set output to ""
@@ -136,7 +137,8 @@ async function handleCall(
     case "notes_create": {
       const title = escAS(args.title as string);
       const body = escAS(args.body as string).replace(/\\n/g, "<br>");
-      const target = args.folder ? `folder "${escAS(args.folder as string)}"` : "default account";
+      const folder = args.folder ? escAS(args.folder as string) : undefined;
+      const target = folder ? `folder "${folder}"` : "default account";
 
       return runAppleScript(`
         tell application "Notes"

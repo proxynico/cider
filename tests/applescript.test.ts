@@ -8,19 +8,19 @@ import {
 } from "../src/applescript.ts";
 
 describe("AppleScript/JXA helpers", () => {
-  test("escapeForAppleScriptLiteral escapes quoting and control chars", () => {
-    const input = 'line1" + backslash\\nline2';
+  test("escapeForAppleScriptLiteral escapes quoting and real newline characters", () => {
+    const input = 'line1"\nline2\\tail';
     const out = escapeForAppleScriptLiteral(input);
+    expect(out).toContain("\\n");
     expect(out).toContain("\\\\");
-    expect(out).toContain("\\\\n");
     expect(out).toContain('\\"');
   });
 
-  test("escapeForJXALiteral escapes quoting and control chars", () => {
-    const input = 'line1" + backslash\\nline2';
+  test("escapeForJXALiteral escapes quoting and real newline characters", () => {
+    const input = 'line1"\nline2\\tail';
     const out = escapeForJXALiteral(input);
+    expect(out).toContain("\\n");
     expect(out).toContain("\\\\");
-    expect(out).toContain("\\\\n");
     expect(out).toContain('\\"');
   });
 
