@@ -1,145 +1,65 @@
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import type { ToolModule } from "../types.ts";
-import { runAppleScript, escAS } from "../applescript.ts";
-import {
-  assertNoUnknownFields,
-  assertRecord,
-  optionalString,
-  requireString,
-} from "./validation.ts";
+import type { ToolDef } from "../types.ts";
+import { runAppleScript, esc } from "../applescript.ts";
 
-const tools: Tool[] = [
+const tools: ToolDef[] = [
   {
     name: "notes_list_folders",
-    description: "List all folders in Apple Notes",
-    inputSchema: { type: "object", properties: {}, required: [] },
+    desc: "List all folders in Apple Notes",
+    handle: () => runAppleScript(`
+      tell application "Notes"
+        set output to ""
+        repeat with f in folders
+          set output to output & name of f & " (" & (count of notes of f) & " notes)" & linefeed
+        end repeat
+        return output
+      end tell
+    `),
   },
   {
     name: "notes_list",
-    description: "List notes, optionally filtered by folder",
-    inputSchema: {
-      type: "object",
-      properties: {
-        folder: {
-          type: "string",
-          description: "Folder name (optional, lists all if omitted)",
-        },
-      },
-      required: [],
+    desc: "List notes, optionally filtered by folder",
+    params: {
+      folder: { type: "string", desc: "Folder name (lists all if omitted)" },
+    },
+    handle: async (a) => {
+      const folder = a.folder ? esc(a.folder as string) : null;
+      if (folder) return runAppleScript(`
+        tell application "Notes"
+          set flds to (every folder whose name is "${folder}")
+          if (count of flds) is 0 then error "Folder not found: ${folder}"
+          if (count of flds) > 1 then error "Multiple folders match: ${folder}"
+          set output to ""
+          repeat with n in notes of item 1 of flds
+            set output to output & name of n & " | " & (modification date of n as string) & linefeed
+          end repeat
+          if output is "" then return "No notes in folder ${folder}"
+          return output
+        end tell
+      `);
+      return runAppleScript(`
+        tell application "Notes"
+          set output to ""
+          repeat with n in notes
+            set output to output & name of n & " | " & (modification date of n as string) & linefeed
+          end repeat
+          if output is "" then return "No notes found"
+          return output
+        end tell
+      `);
     },
   },
   {
     name: "notes_create",
-    description: "Create a new note in Apple Notes",
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: { type: "string", description: "Note title" },
-        body: { type: "string", description: "Note body (plain text)" },
-        folder: {
-          type: "string",
-          description: "Folder name (optional, uses default)",
-        },
-      },
-      required: ["title", "body"],
+    desc: "Create a new note in Apple Notes",
+    params: {
+      title: { type: "string", desc: "Note title", req: true },
+      body: { type: "string", desc: "Note body (plain text)", req: true },
+      folder: { type: "string", desc: "Folder name (uses default if omitted)" },
     },
-  },
-  {
-    name: "notes_read",
-    description: "Read the content of a note by title",
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: { type: "string", description: "Note title" },
-      },
-      required: ["title"],
-    },
-  },
-  {
-    name: "notes_search",
-    description: "Search notes by title",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Search query" },
-      },
-      required: ["query"],
-    },
-  },
-  {
-    name: "notes_delete",
-    description: "Delete a note by title",
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: { type: "string", description: "Note title to delete" },
-      },
-      required: ["title"],
-    },
-  },
-];
-
-async function handleCall(
-  name: string,
-  args: Record<string, unknown>
-): Promise<string> {
-  switch (name) {
-    case "notes_list_folders": {
-      return runAppleScript(`
-        tell application "Notes"
-          set output to ""
-          repeat with f in folders
-            set nCount to count of notes of f
-            set output to output & name of f & " (" & nCount & " notes)" & linefeed
-          end repeat
-          return output
-        end tell
-      `);
-    }
-
-    case "notes_list": {
-      const folder = args.folder as string | undefined;
-      const escapedFolder = folder ? escAS(folder) : undefined;
-      const emptyMsg = escapedFolder ? `No notes in folder ${escapedFolder}` : "No notes found";
-      const script = folder
-        ? `
-            tell application "Notes"
-              set matchingFolders to (every folder whose name is "${escapedFolder}")
-              if (count of matchingFolders) is 0 then
-                error "Folder not found: ${escapedFolder}"
-              end if
-              if (count of matchingFolders) > 1 then
-                error "Multiple folders match: ${escapedFolder}"
-              end if
-              set theNotes to notes of item 1 of matchingFolders
-              set output to ""
-              repeat with n in theNotes
-                set output to output & name of n & " | " & (modification date of n as string) & linefeed
-              end repeat
-              if output is "" then return "${emptyMsg}"
-              return output
-            end tell
-          `
-        : `
-            tell application "Notes"
-              set output to ""
-              repeat with n in notes
-                set output to output & name of n & " | " & (modification date of n as string) & linefeed
-              end repeat
-              if output is "" then return "No notes found"
-              return output
-            end tell
-          `;
-
-      return runAppleScript(script);
-    }
-
-    case "notes_create": {
-      const title = escAS(args.title as string);
-      const body = escAS(args.body as string).replace(/\\n/g, "<br>");
-      const folder = args.folder ? escAS(args.folder as string) : undefined;
-      const target = folder ? `folder "${folder}"` : "default account";
-
+    handle: async (a) => {
+      const title = esc(a.title as string);
+      const body = esc(a.body as string).replace(/\\n/g, "<br>");
+      const target = a.folder ? `folder "${esc(a.folder as string)}"` : "default account";
       return runAppleScript(`
         tell application "Notes"
           tell ${target}
@@ -148,11 +68,16 @@ async function handleCall(
           return "Note created: ${title}"
         end tell
       `);
-    }
-
-    case "notes_read": {
-      const title = escAS(args.title as string);
-
+    },
+  },
+  {
+    name: "notes_read",
+    desc: "Read the content of a note by title",
+    params: {
+      title: { type: "string", desc: "Note title", req: true },
+    },
+    handle: async (a) => {
+      const title = esc(a.title as string);
       return runAppleScript(`
         tell application "Notes"
           set theNotes to (every note whose name is "${title}")
@@ -162,27 +87,66 @@ async function handleCall(
           return "Title: " & name of n & linefeed & "Modified: " & (modification date of n as string) & linefeed & linefeed & plaintext of n
         end tell
       `);
-    }
-
-    case "notes_search": {
-      const query = escAS(args.query as string);
-
+    },
+  },
+  {
+    name: "notes_search",
+    desc: "Search notes by title",
+    params: {
+      query: { type: "string", desc: "Search query", req: true },
+    },
+    handle: async (a) => {
+      const query = esc(a.query as string);
       return runAppleScript(`
         tell application "Notes"
           set output to ""
-          set theNotes to (every note whose name contains "${query}")
-          repeat with n in theNotes
+          repeat with n in (every note whose name contains "${query}")
             set output to output & name of n & " | " & (modification date of n as string) & linefeed
           end repeat
           if output is "" then return "No notes matching: ${query}"
           return output
         end tell
       `);
-    }
-
-    case "notes_delete": {
-      const title = escAS(args.title as string);
-
+    },
+  },
+  {
+    name: "notes_update",
+    desc: "Update an existing note's title or body",
+    params: {
+      title: { type: "string", desc: "Current note title to find", req: true },
+      newTitle: { type: "string", desc: "New title" },
+      newBody: { type: "string", desc: "New body text (plain text)" },
+    },
+    handle: async (a) => {
+      const title = esc(a.title as string);
+      const updates: string[] = [];
+      if (a.newTitle) updates.push(`set name of n to "${esc(a.newTitle as string)}"`);
+      if (a.newBody) {
+        const html = esc(a.newBody as string).replace(/\\n/g, "<br>");
+        const heading = a.newTitle ? esc(a.newTitle as string) : title;
+        updates.push(`set body of n to "<h1>${heading}</h1><br>${html}"`);
+      }
+      if (!updates.length) throw new Error("No updates specified");
+      return runAppleScript(`
+        tell application "Notes"
+          set theNotes to (every note whose name is "${title}")
+          if (count of theNotes) is 0 then error "Note not found: ${title}"
+          if (count of theNotes) > 1 then error "Multiple notes match: ${title}"
+          set n to item 1 of theNotes
+          ${updates.join("\n          ")}
+          return "Note updated: ${title}"
+        end tell
+      `);
+    },
+  },
+  {
+    name: "notes_delete",
+    desc: "Delete a note by title",
+    params: {
+      title: { type: "string", desc: "Note title to delete", req: true },
+    },
+    handle: async (a) => {
+      const title = esc(a.title as string);
       return runAppleScript(`
         tell application "Notes"
           set theNotes to (every note whose name is "${title}")
@@ -192,51 +156,8 @@ async function handleCall(
           return "Note deleted: ${title}"
         end tell
       `);
-    }
+    },
+  },
+];
 
-    default:
-      throw new Error(`Unknown notes tool: ${name}`);
-  }
-}
-
-function parseArgs(name: string, rawArgs: Record<string, unknown>): Record<string, unknown> {
-  const args = assertRecord(rawArgs, `notes.${name}`);
-  switch (name) {
-    case "notes_list_folders":
-      assertNoUnknownFields(args, [], "notes_list_folders");
-      return {};
-
-    case "notes_list": {
-      assertNoUnknownFields(args, ["folder"], "notes_list");
-      return {
-        folder: optionalString(args, "folder", "notes_list"),
-      };
-    }
-
-    case "notes_create": {
-      assertNoUnknownFields(args, ["title", "body", "folder"], "notes_create");
-      return {
-        title: requireString(args, "title", "notes_create"),
-        body: requireString(args, "body", "notes_create"),
-        folder: optionalString(args, "folder", "notes_create"),
-      };
-    }
-
-    case "notes_read":
-      assertNoUnknownFields(args, ["title"], "notes_read");
-      return { title: requireString(args, "title", "notes_read") };
-
-    case "notes_search":
-      assertNoUnknownFields(args, ["query"], "notes_search");
-      return { query: requireString(args, "query", "notes_search") };
-
-    case "notes_delete":
-      assertNoUnknownFields(args, ["title"], "notes_delete");
-      return { title: requireString(args, "title", "notes_delete") };
-
-    default:
-      throw new Error(`Unknown notes tool: ${name}`);
-  }
-}
-
-export default { tools, parseArgs, handleCall } satisfies ToolModule;
+export default tools;

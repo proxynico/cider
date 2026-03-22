@@ -1,35 +1,21 @@
 import { describe, expect, test } from "bun:test";
-
-import {
-  asDateExpr,
-  escapeForAppleScriptLiteral,
-  escapeForJXALiteral,
-  validateTimeoutMs,
-} from "../src/applescript.ts";
+import { esc, asDateExpr } from "../src/applescript.ts";
 
 describe("AppleScript/JXA helpers", () => {
-  test("escapeForAppleScriptLiteral escapes quoting and real newline characters", () => {
-    const input = 'line1"\nline2\\tail';
-    const out = escapeForAppleScriptLiteral(input);
+  test("esc escapes quotes, backslashes, and control characters", () => {
+    const out = esc('line1"\nline2\\tail');
     expect(out).toContain("\\n");
     expect(out).toContain("\\\\");
     expect(out).toContain('\\"');
   });
 
-  test("escapeForJXALiteral escapes quoting and real newline characters", () => {
-    const input = 'line1"\nline2\\tail';
-    const out = escapeForJXALiteral(input);
-    expect(out).toContain("\\n");
-    expect(out).toContain("\\\\");
-    expect(out).toContain('\\"');
-  });
-
-  test("asDateExpr generates applescript date expression", () => {
+  test("asDateExpr generates epoch-based date expression", () => {
     const expr = asDateExpr("2024-03-15T10:30:00.000Z");
     expect(expr).toContain("date \"1/1/1970");
+    expect(expr).toContain("+");
   });
 
-  test("validateTimeoutMs rejects invalid timeout", () => {
-    expect(() => validateTimeoutMs(0)).toThrow();
+  test("asDateExpr rejects invalid dates", () => {
+    expect(() => asDateExpr("not-a-date")).toThrow("Invalid date");
   });
 });
