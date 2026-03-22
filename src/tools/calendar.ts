@@ -1,6 +1,16 @@
 import type { ToolDef } from "../types.ts";
 import { asDateExpr, esc, runAppleScript } from "../applescript.ts";
 
+const findCal = (name: string) => `
+  set cals to (every calendar whose name is "${name}")
+  if (count of cals) is 0 then error "Calendar not found: ${name}"
+  if (count of cals) > 1 then error "Multiple calendars match: ${name}"`;
+
+const findEvent = (title: string) => `
+  set evs to (every event of item 1 of cals whose summary is "${title}")
+  if (count of evs) is 0 then error "Event not found: ${title}"
+  if (count of evs) > 1 then error "Multiple events match: ${title}"`;
+
 const tools: ToolDef[] = [
   {
     name: "calendar_list_calendars",
@@ -30,9 +40,7 @@ const tools: ToolDef[] = [
       const cal = a.calendarName ? esc(a.calendarName as string) : null;
       if (cal) return runAppleScript(`
         tell application "Calendar"
-          set cals to (every calendar whose name is "${cal}")
-          if (count of cals) is 0 then error "Calendar not found: ${cal}"
-          if (count of cals) > 1 then error "Multiple calendars match: ${cal}"
+          ${findCal(cal)}
           set output to ""
           repeat with ev in (every event of item 1 of cals whose ${pred})
             set output to output & summary of ev & " | " & (start date of ev as string) & " - " & (end date of ev as string) & linefeed
@@ -108,12 +116,8 @@ const tools: ToolDef[] = [
       if (!updates.length) throw new Error("No updates specified");
       return runAppleScript(`
         tell application "Calendar"
-          set cals to (every calendar whose name is "${cal}")
-          if (count of cals) is 0 then error "Calendar not found: ${cal}"
-          if (count of cals) > 1 then error "Multiple calendars match: ${cal}"
-          set evs to (every event of item 1 of cals whose summary is "${title}")
-          if (count of evs) is 0 then error "Event not found: ${title}"
-          if (count of evs) > 1 then error "Multiple events match: ${title}"
+          ${findCal(cal)}
+          ${findEvent(title)}
           set ev to item 1 of evs
           ${updates.join("\n          ")}
           return "Event updated: ${title}"
@@ -133,12 +137,8 @@ const tools: ToolDef[] = [
       const cal = esc(a.calendar as string);
       return runAppleScript(`
         tell application "Calendar"
-          set cals to (every calendar whose name is "${cal}")
-          if (count of cals) is 0 then error "Calendar not found: ${cal}"
-          if (count of cals) > 1 then error "Multiple calendars match: ${cal}"
-          set evs to (every event of item 1 of cals whose summary is "${title}")
-          if (count of evs) is 0 then error "Event not found: ${title}"
-          if (count of evs) > 1 then error "Multiple events match: ${title}"
+          ${findCal(cal)}
+          ${findEvent(title)}
           delete item 1 of evs
           return "Event deleted: ${title}"
         end tell

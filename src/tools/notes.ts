@@ -1,6 +1,12 @@
 import type { ToolDef } from "../types.ts";
 import { runAppleScript, esc } from "../applescript.ts";
 
+const findNote = (title: string) => `
+  set theNotes to (every note whose name is "${title}")
+  if (count of theNotes) is 0 then error "Note not found: ${title}"
+  if (count of theNotes) > 1 then error "Multiple notes match: ${title}"
+  set n to item 1 of theNotes`;
+
 const tools: ToolDef[] = [
   {
     name: "notes_list_folders",
@@ -80,10 +86,7 @@ const tools: ToolDef[] = [
       const title = esc(a.title as string);
       return runAppleScript(`
         tell application "Notes"
-          set theNotes to (every note whose name is "${title}")
-          if (count of theNotes) is 0 then error "Note not found: ${title}"
-          if (count of theNotes) > 1 then error "Multiple notes match: ${title}"
-          set n to item 1 of theNotes
+          ${findNote(title)}
           return "Title: " & name of n & linefeed & "Modified: " & (modification date of n as string) & linefeed & linefeed & plaintext of n
         end tell
       `);
@@ -129,10 +132,7 @@ const tools: ToolDef[] = [
       if (!updates.length) throw new Error("No updates specified");
       return runAppleScript(`
         tell application "Notes"
-          set theNotes to (every note whose name is "${title}")
-          if (count of theNotes) is 0 then error "Note not found: ${title}"
-          if (count of theNotes) > 1 then error "Multiple notes match: ${title}"
-          set n to item 1 of theNotes
+          ${findNote(title)}
           ${updates.join("\n          ")}
           return "Note updated: ${title}"
         end tell
@@ -149,10 +149,8 @@ const tools: ToolDef[] = [
       const title = esc(a.title as string);
       return runAppleScript(`
         tell application "Notes"
-          set theNotes to (every note whose name is "${title}")
-          if (count of theNotes) is 0 then error "Note not found: ${title}"
-          if (count of theNotes) > 1 then error "Multiple notes match: ${title}"
-          delete item 1 of theNotes
+          ${findNote(title)}
+          delete n
           return "Note deleted: ${title}"
         end tell
       `);
