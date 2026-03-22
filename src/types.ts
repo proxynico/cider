@@ -18,17 +18,13 @@ export interface ToolDef {
 }
 
 export function toMcpTool(def: ToolDef): Tool {
-  const properties: Record<string, unknown> = {};
+  const properties: Record<string, object> = {};
   const required: string[] = [];
   for (const [k, p] of Object.entries(def.params ?? {})) {
     properties[k] = { type: p.type, description: p.desc };
     if (p.req) required.push(k);
   }
-  return {
-    name: def.name,
-    description: def.desc,
-    inputSchema: { type: "object" as const, properties: properties as Record<string, object>, required },
-  };
+  return { name: def.name, description: def.desc, inputSchema: { type: "object", properties, required } };
 }
 
 export function validate(def: ToolDef, raw: Record<string, unknown>): Record<string, unknown> {

@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { toMcpTool, validate } from "./types.ts";
-import type { ToolDef } from "./types.ts";
+import { type ToolDef, toMcpTool, validate } from "./types.ts";
 import calendar from "./tools/calendar.ts";
 import reminders from "./tools/reminders.ts";
 import notes from "./tools/notes.ts";
@@ -9,7 +8,7 @@ import contacts from "./tools/contacts.ts";
 
 const server = new McpServer({ name: "cider", version: "0.1.0" });
 
-for (const def of [...calendar, ...reminders, ...notes, ...contacts] as ToolDef[]) {
+for (const def of [...calendar, ...reminders, ...notes, ...contacts]) {
   const { name, description, inputSchema } = toMcpTool(def);
   server.tool(name, description ?? "", inputSchema as Record<string, unknown>, async (raw) => {
     try {
