@@ -2,7 +2,7 @@
 
 MCP server that gives Claude Code (or any MCP client) access to macOS Apple apps via AppleScript and JXA.
 
-**21 tools** across 4 apps: Calendar, Reminders, Notes, and Contacts.
+**22 tools** across 4 apps: Calendar, Reminders, Notes, and Contacts.
 
 ## Quick Start
 
@@ -44,7 +44,7 @@ Restart Claude Code. Tools appear automatically. macOS will prompt for Automatio
 
 **Optional params:** `showCompleted` (list), `dueDate`, `notes`, `priority` (create). Priority: 0=none, 1=high, 5=medium, 9=low.
 
-### Notes (6 tools)
+### Notes (7 tools)
 
 | Tool | Description | Required Params |
 |------|-------------|-----------------|
@@ -53,9 +53,10 @@ Restart Claude Code. Tools appear automatically. macOS will prompt for Automatio
 | `notes_create` | Create a new note | `title`, `body` |
 | `notes_read` | Read note content | `title` |
 | `notes_search` | Search notes by title | `query` |
+| `notes_update` | Update a note's title or body | `title` |
 | `notes_delete` | Delete a note by title | `title` |
 
-**Optional params:** `folder` (list, create).
+**Optional params:** `folder` (list, create), `newTitle`, `newBody` (update).
 
 ### Contacts (5 tools)
 
@@ -79,7 +80,7 @@ All date parameters use ISO 8601 format: `2024-03-15T10:30:00`
 src/
   index.ts          MCP server entry, tool registration
   applescript.ts    Shared runners (AppleScript + JXA) with 30s timeout
-  types.ts          ToolModule interface
+  types.ts          ToolDef interface, schema conversion, input validation
   tools/
     calendar.ts     AppleScript
     reminders.ts    JXA with batch property access

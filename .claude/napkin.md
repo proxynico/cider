@@ -15,7 +15,7 @@
 
 ## Domain Notes
 - Cider = MCP server giving Claude Code access to macOS Apple apps via AppleScript
-- 4 modules: Calendar, Reminders, Notes, and Contacts (21 tools total)
+- 4 modules: Calendar, Reminders, Notes, and Contacts (22 tools total)
 - Transport: stdio, runs as child process of Claude Code
 - No API keys — relies on macOS Automation permissions
 - Source-of-truth local guidance file: `.claude/napkin.md` (no `claude.md` in repo root)
