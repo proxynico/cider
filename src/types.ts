@@ -1,4 +1,4 @@
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 
 export interface Param {
   type: "string" | "boolean" | "number";
@@ -17,14 +17,16 @@ export interface ToolDef {
   handle(args: Record<string, unknown>): Promise<string>;
 }
 
-export function toMcpTool(def: ToolDef): Tool {
-  const properties: Record<string, object> = {};
-  const required: string[] = [];
+const zodType = { string: z.string(), boolean: z.boolean(), number: z.number() } as const;
+
+export function toZodShape(def: ToolDef): Record<string, z.ZodType> {
+  const shape: Record<string, z.ZodType> = {};
   for (const [k, p] of Object.entries(def.params ?? {})) {
-    properties[k] = { type: p.type, description: p.desc };
-    if (p.req) required.push(k);
+    let schema: z.ZodType = zodType[p.type].describe(p.desc);
+    if (!p.req) schema = schema.optional();
+    shape[k] = schema;
   }
-  return { name: def.name, description: def.desc, inputSchema: { type: "object", properties, required } };
+  return shape;
 }
 
 export function validate(def: ToolDef, raw: Record<string, unknown>): Record<string, unknown> {
