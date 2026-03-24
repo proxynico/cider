@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { validate } from "../src/types.ts";
+import { toZodShape, validate } from "../src/types.ts";
 import type { ToolDef } from "../src/types.ts";
 
 const mock: ToolDef = {
@@ -46,6 +46,15 @@ describe("validate", () => {
     expect(() => validate(mock, { title: "hi", date: "nope" })).toThrow("ISO 8601");
   });
 
+  test("rejects non-ISO but parseable date strings", () => {
+    expect(() => validate(mock, { title: "hi", date: "2024/01/01" })).toThrow("ISO 8601");
+    expect(() => validate(mock, { title: "hi", date: "March 15, 2024" })).toThrow("ISO 8601");
+  });
+
+  test("rejects impossible ISO dates", () => {
+    expect(() => validate(mock, { title: "hi", date: "2024-02-30" })).toThrow("ISO 8601");
+  });
+
   test("rejects non-integer", () => {
     expect(() => validate(mock, { title: "hi", count: 1.5 })).toThrow("integer");
   });
@@ -74,5 +83,29 @@ describe("validate", () => {
     const result = validate(mock, { title: "hi" });
     expect(result).not.toHaveProperty("count");
     expect(result).not.toHaveProperty("flag");
+  });
+});
+
+describe("toZodShape", () => {
+  const shape = toZodShape(mock);
+  const titleSchema = shape.title!;
+  const countSchema = shape.count!;
+  const dateSchema = shape.date!;
+
+  test("mirrors required string rules", () => {
+    expect(titleSchema.safeParse("hi").success).toBe(true);
+    expect(titleSchema.safeParse("   ").success).toBe(false);
+  });
+
+  test("mirrors number rules", () => {
+    expect(countSchema.safeParse(5).success).toBe(true);
+    expect(countSchema.safeParse(1.5).success).toBe(false);
+    expect(countSchema.safeParse(11).success).toBe(false);
+  });
+
+  test("mirrors ISO date rules", () => {
+    expect(dateSchema.safeParse("2024-01-01T00:00:00").success).toBe(true);
+    expect(dateSchema.safeParse("2024/01/01").success).toBe(false);
+    expect(dateSchema.safeParse("2024-02-30").success).toBe(false);
   });
 });

@@ -1,6 +1,18 @@
 import type { ToolDef } from "../types.ts";
 import { runAppleScript, esc } from "../applescript.ts";
 
+const escapeHtml = (text: string): string =>
+  text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+const renderNoteBody = (title: string, body: string): string => {
+  const safeTitle = escapeHtml(title);
+  const safeBody = escapeHtml(body).replace(/\r\n?/g, "\n").replace(/\n/g, "<br>");
+  return `<h1>${safeTitle}</h1><br>${safeBody}`;
+};
+
 const findNote = (title: string) => `
   set theNotes to (every note whose name is "${title}")
   if (count of theNotes) is 0 then error "Note not found: ${title}"
@@ -63,15 +75,16 @@ const tools: ToolDef[] = [
       folder: { type: "string", desc: "Folder name (uses default if omitted)" },
     },
     handle: async (a) => {
-      const title = esc(a.title as string);
-      const body = esc(a.body as string).replace(/\\n/g, "<br>");
+      const rawTitle = a.title as string;
+      const title = esc(rawTitle);
+      const body = esc(renderNoteBody(rawTitle, a.body as string));
       const target = a.folder ? `folder "${esc(a.folder as string)}"` : "default account";
       return runAppleScript(`
         tell application "Notes"
           tell ${target}
-            make new note with properties {name:"${title}", body:"<h1>${title}</h1><br>${body}"}
+            make new note with properties {name:"${title}", body:"${body}"}
           end tell
-          return "Note created: ${title}"
+          return "Note created: ${rawTitle}"
         end tell
       `);
     },
@@ -121,20 +134,21 @@ const tools: ToolDef[] = [
       newBody: { type: "string", desc: "New body text (plain text)" },
     },
     handle: async (a) => {
-      const title = esc(a.title as string);
+      const rawTitle = a.title as string;
+      const title = esc(rawTitle);
       const updates: string[] = [];
       if (a.newTitle) updates.push(`set name of n to "${esc(a.newTitle as string)}"`);
       if (a.newBody) {
-        const html = esc(a.newBody as string).replace(/\\n/g, "<br>");
-        const heading = a.newTitle ? esc(a.newTitle as string) : title;
-        updates.push(`set body of n to "<h1>${heading}</h1><br>${html}"`);
+        const heading = (a.newTitle as string | undefined) ?? rawTitle;
+        const html = esc(renderNoteBody(heading, a.newBody as string));
+        updates.push(`set body of n to "${html}"`);
       }
       if (!updates.length) throw new Error("No updates specified");
       return runAppleScript(`
         tell application "Notes"
           ${findNote(title)}
           ${updates.join("\n          ")}
-          return "Note updated: ${title}"
+          return "Note updated: ${rawTitle}"
         end tell
       `);
     },
@@ -146,12 +160,13 @@ const tools: ToolDef[] = [
       title: { type: "string", desc: "Note title to delete", req: true },
     },
     handle: async (a) => {
-      const title = esc(a.title as string);
+      const rawTitle = a.title as string;
+      const title = esc(rawTitle);
       return runAppleScript(`
         tell application "Notes"
           ${findNote(title)}
           delete n
-          return "Note deleted: ${title}"
+          return "Note deleted: ${rawTitle}"
         end tell
       `);
     },

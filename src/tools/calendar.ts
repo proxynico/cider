@@ -3,16 +3,36 @@ import type { ToolDef } from "../types.ts";
 import { asDateExpr, esc, runAppleScript } from "../applescript.ts";
 
 const CAL_BIN = resolve(dirname(import.meta.path), "../helpers/cider-cal");
+const CAL_TIMEOUT = 30_000;
 
 async function runCalBin(...args: string[]): Promise<string> {
   const proc = Bun.spawn([CAL_BIN, ...args], { stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (code !== 0) throw new Error(stderr.trim() || `cider-cal exited ${code}`);
-  return stdout.trim();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const race = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      proc.kill();
+      reject(new Error(`cider-cal timed out after ${CAL_TIMEOUT}ms`));
+    }, CAL_TIMEOUT);
+  });
+
+  try {
+    const [stdout, stderr, code] = await Promise.race([
+      Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]),
+      race,
+    ]);
+    if (code !== 0) throw new Error(stderr.trim() || `cider-cal exited ${code}`);
+    return stdout.trim();
+  } finally {
+    clearTimeout(timer);
+    if (proc.exitCode === null) {
+      proc.kill();
+      await proc.exited.catch(() => {});
+    }
+  }
 }
 
 const findCal = (name: string) => `

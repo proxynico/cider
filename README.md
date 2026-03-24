@@ -67,13 +67,17 @@ Restart Claude Code. Tools appear automatically. macOS will prompt for Automatio
 | `contacts_search` | Search contacts by name | `query` |
 | `contacts_get` | Get full contact details | `name` |
 | `contacts_create` | Create a new contact | `firstName`, `lastName` |
-| `contacts_delete` | Delete a contact by exact name | `name` |
+| `contacts_delete` | Delete a contact by exact full name | `name` |
 
 **Optional params:** `email`, `phone`, `org`, `title` (create).
 
 ## Date Format
 
-All date parameters use ISO 8601 format: `2024-03-15T10:30:00`
+All date parameters use strict ISO 8601 input.
+
+- Date only: `2024-03-15`
+- Local date-time: `2024-03-15T10:30:00`
+- UTC / offset date-time: `2024-03-15T10:30:00Z`, `2024-03-15T10:30:00+08:00`
 
 ## Architecture
 
@@ -94,7 +98,7 @@ src/
 - **Runtime:** Bun + TypeScript
 - **Transport:** stdio (MCP protocol)
 - **Execution:** Calendar reads (list calendars, list events) use a compiled Swift binary via EventKit for indexed queries — instant even on large synced calendars. Calendar writes use AppleScript. Reminders and Contacts use JXA with batch property access. Notes use AppleScript.
-- **Timeout:** All osascript calls have a 30-second timeout to prevent indefinite hangs.
+- **Timeout:** AppleScript/JXA calls and the calendar helper use a 30-second timeout to prevent indefinite hangs.
 - **Auth:** macOS Automation permissions handle access control. No API keys needed.
 
 ## Permissions
@@ -124,9 +128,12 @@ MIT
 ## Validation and failures
 
 - Tool inputs are validated before AppleScript/JXA execution.
+- MCP-exposed schemas now include required-string, integer, range, and ISO-date constraints.
 - Missing/invalid arguments return MCP `isError` responses.
 - Missing entities and ambiguous matches inside scripts now return explicit errors.
-- Date parameters expect ISO 8601 input and are validated before execution.
+- Date parameters require strict ISO 8601 input and are validated before execution.
+- Notes `body` fields are treated as plain text when written.
+- `contacts_delete` requires an exact full-name match.
 
 ## Notes about repository guidance
 

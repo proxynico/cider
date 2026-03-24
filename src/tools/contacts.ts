@@ -14,6 +14,11 @@ const findContact = (name: string) => `
   if (matches.length === 0) throw new Error("Contact not found: ${name}");
   if (matches.length > 1) throw new Error("Multiple contacts match: ${name}");`;
 
+const findContactExact = (name: string) => `
+  const matches = app.people.whose({ name: "${name}" });
+  if (matches.length === 0) throw new Error("Contact not found: ${name}");
+  if (matches.length > 1) throw new Error("Multiple contacts match: ${name}");`;
+
 const tools: ToolDef[] = [
   {
     name: "contacts_list",
@@ -117,7 +122,7 @@ const tools: ToolDef[] = [
       const name = esc(a.name as string);
       return runJXA(`
         const app = Application("Contacts");
-        ${findContact(name)}
+        ${findContactExact(name)}
         app.delete(matches[0]);
         app.save();
         "Contact deleted: ${name}";
