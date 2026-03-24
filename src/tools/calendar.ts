@@ -1,5 +1,19 @@
+import { resolve, dirname } from "path";
 import type { ToolDef } from "../types.ts";
 import { asDateExpr, esc, runAppleScript } from "../applescript.ts";
+
+const CAL_BIN = resolve(dirname(import.meta.path), "../helpers/cider-cal");
+
+async function runCalBin(...args: string[]): Promise<string> {
+  const proc = Bun.spawn([CAL_BIN, ...args], { stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (code !== 0) throw new Error(stderr.trim() || `cider-cal exited ${code}`);
+  return stdout.trim();
+}
 
 const findCal = (name: string) => `
   set cals to (every calendar whose name is "${name}")
@@ -15,15 +29,7 @@ const tools: ToolDef[] = [
   {
     name: "calendar_list_calendars",
     desc: "List all calendars available in Apple Calendar",
-    handle: () => runAppleScript(`
-      tell application "Calendar"
-        set output to ""
-        repeat with c in calendars
-          set output to output & name of c & linefeed
-        end repeat
-        return output
-      end tell
-    `),
+    handle: () => runCalBin(),
   },
   {
     name: "calendar_list_events",
@@ -34,33 +40,9 @@ const tools: ToolDef[] = [
       calendarName: { type: "string", desc: "Calendar name (searches all if omitted)" },
     },
     handle: async (a) => {
-      const s = asDateExpr(a.startDate as string);
-      const e = asDateExpr(a.endDate as string);
-      const pred = `start date >= ${s} and start date <= ${e}`;
-      const cal = a.calendarName ? esc(a.calendarName as string) : null;
-      if (cal) return runAppleScript(`
-        tell application "Calendar"
-          ${findCal(cal)}
-          set output to ""
-          repeat with ev in (every event of item 1 of cals whose ${pred})
-            set output to output & summary of ev & " | " & (start date of ev as string) & " - " & (end date of ev as string) & linefeed
-          end repeat
-          if output is "" then return "No events found"
-          return output
-        end tell
-      `);
-      return runAppleScript(`
-        tell application "Calendar"
-          set output to ""
-          repeat with c in calendars
-            repeat with ev in (every event of c whose ${pred})
-              set output to output & "[" & name of c & "] " & summary of ev & " | " & (start date of ev as string) & " - " & (end date of ev as string) & linefeed
-            end repeat
-          end repeat
-          if output is "" then return "No events found"
-          return output
-        end tell
-      `);
+      const args = [a.startDate as string, a.endDate as string];
+      if (a.calendarName) args.push(a.calendarName as string);
+      return runCalBin(...args);
     },
   },
   {

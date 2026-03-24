@@ -33,4 +33,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
+# compiled swift helpers
+src/helpers/cider-cal
+
 # bun (bun.lock committed for reproducible builds)

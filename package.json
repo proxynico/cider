@@ -6,6 +6,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "build:swift": "swiftc -O src/helpers/cider-cal.swift -o src/helpers/cider-cal",
     "start": "bun run src/index.ts",
     "typecheck": "bunx tsc --noEmit",
     "test": "bunx tsc --noEmit && bun test"

@@ -11,6 +11,7 @@ MCP server that gives Claude Code (or any MCP client) access to macOS Apple apps
 git clone https://github.com/yourusername/cider.git
 cd cider
 bun install
+bun run build:swift    # compile calendar helper (one-time)
 
 # Register with Claude Code
 claude mcp add --scope user cider -- bun run ~/Developer/cider/src/index.ts
@@ -82,15 +83,17 @@ src/
   applescript.ts    Shared runners (AppleScript + JXA) with 30s timeout
   types.ts          ToolDef interface, schema conversion, input validation
   tools/
-    calendar.ts     AppleScript
+    calendar.ts     EventKit binary for reads, AppleScript for writes
     reminders.ts    JXA with batch property access
     notes.ts        AppleScript
     contacts.ts     JXA with batch property access
+  helpers/
+    cider-cal.swift Compiled EventKit helper for fast calendar queries
 ```
 
 - **Runtime:** Bun + TypeScript
 - **Transport:** stdio (MCP protocol)
-- **Execution:** Calendar and Notes use AppleScript. Reminders and Contacts use JXA with batch property access for performance — fetching all names/dates in a single call instead of per-item, which avoids scripting bridge hangs on large datasets.
+- **Execution:** Calendar reads (list calendars, list events) use a compiled Swift binary via EventKit for indexed queries — instant even on large synced calendars. Calendar writes use AppleScript. Reminders and Contacts use JXA with batch property access. Notes use AppleScript.
 - **Timeout:** All osascript calls have a 30-second timeout to prevent indefinite hangs.
 - **Auth:** macOS Automation permissions handle access control. No API keys needed.
 
@@ -108,6 +111,7 @@ If running from an IDE (VS Code, Cursor), the IDE is the app requesting permissi
 
 ```bash
 bun install
+bun run build:swift    # compile calendar helper
 bun run src/index.ts
 ```
 
