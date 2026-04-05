@@ -1,4 +1,6 @@
 const TIMEOUT = 30_000;
+const PERM_RE = /errAEEventNotPermitted|-1743|-10004|Not authorized|not allowed assistive/i;
+const PERM_HINT = "\n\nPermission denied. Grant access in System Settings > Privacy & Security > Automation.";
 
 /** Escape a string for embedding in AppleScript/JXA double-quoted strings. */
 export function esc(s: string): string {
@@ -24,7 +26,10 @@ async function run(flags: string[], script: string, timeout = TIMEOUT): Promise<
       Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]),
       race,
     ]);
-    if (code !== 0) throw new Error(stderr.trim() || `osascript exited with code ${code}`);
+    if (code !== 0) {
+      const msg = stderr.trim() || `osascript exited with code ${code}`;
+      throw new Error(PERM_RE.test(msg) ? msg + PERM_HINT : msg);
+    }
     return stdout.trim();
   } finally {
     clearTimeout(timer);

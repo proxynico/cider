@@ -84,8 +84,8 @@ All date parameters use strict ISO 8601 input.
 ```
 src/
   index.ts          MCP server entry, tool registration
-  applescript.ts    Shared runners (AppleScript + JXA) with 30s timeout
-  types.ts          ToolDef interface, schema conversion, input validation
+  applescript.ts    Shared runners (AppleScript + JXA) with 30s timeout + permission detection
+  types.ts          ToolDef interface, Zod schema generation
   tools/
     calendar.ts     EventKit binary for reads, AppleScript for writes
     reminders.ts    JXA with batch property access
@@ -127,15 +127,14 @@ MIT
 
 ## Validation and failures
 
-- Tool inputs are validated before AppleScript/JXA execution.
-- MCP-exposed schemas now include required-string, integer, range, and ISO-date constraints.
+- Tool inputs are validated by the MCP SDK via Zod schemas (required-string, integer, range, and ISO-date constraints). No manual validation layer.
 - Missing/invalid arguments return MCP `isError` responses.
 - Missing entities and ambiguous matches inside scripts now return explicit errors.
+- macOS permission errors (e.g. Automation access denied) are detected and include actionable guidance pointing to System Settings.
 - Date parameters require strict ISO 8601 input and are validated before execution.
 - Notes `body` fields are treated as plain text when written.
 - `contacts_delete` requires an exact full-name match.
 
 ## Notes about repository guidance
 
-- This repository does not currently include `claude.md`.
 - Source-of-truth local notes are tracked in `.claude/napkin.md`.
