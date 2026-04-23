@@ -8,13 +8,13 @@ Single MCP server that gives Claude Code (or any MCP client) access to macOS App
 
 ```bash
 # Clone and install
-git clone https://github.com/yourusername/cider.git
+git clone https://github.com/proxynico/cider.git
 cd cider
 bun install
 bun run build:swift    # compile calendar helper (one-time)
 
 # Register one MCP server with Claude Code
-claude mcp add --scope user cider -- bun run ~/Developer/cider/src/index.ts
+claude mcp add --scope user cider -- bun run ~/developer/cider/src/index.ts
 ```
 
 Cider is **one MCP server**. Register it once and it exposes all Calendar, Notes, and Contacts tools.
