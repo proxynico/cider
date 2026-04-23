@@ -113,8 +113,56 @@ const tools: ToolDef[] = [
     },
   },
   {
+    name: "contacts_update",
+    desc: "Update an existing contact by exact full name",
+    params: {
+      name: { type: "string", desc: "Exact full name of the contact", req: true },
+      newFirstName: { type: "string", desc: "New first name" },
+      newLastName: { type: "string", desc: "New last name" },
+      newEmail: { type: "string", desc: "New primary email address" },
+      newPhone: { type: "string", desc: "New primary phone number" },
+      newOrg: { type: "string", desc: "New organization" },
+      newTitle: { type: "string", desc: "New job title" },
+    },
+    handle: async (a) => {
+      const name = esc(a.name as string);
+      const updates: string[] = [];
+      if (a.newFirstName) updates.push(`p.firstName = "${esc(a.newFirstName as string)}";`);
+      if (a.newLastName) updates.push(`p.lastName = "${esc(a.newLastName as string)}";`);
+      if (a.newOrg) updates.push(`p.organization = "${esc(a.newOrg as string)}";`);
+      if (a.newTitle) updates.push(`p.jobTitle = "${esc(a.newTitle as string)}";`);
+      if (a.newEmail) updates.push(`
+        const emails = p.emails();
+        if (emails.length > 0) {
+          emails[0].label = "work";
+          emails[0].value = "${esc(a.newEmail as string)}";
+        } else {
+          p.emails.push(app.Email({label: "work", value: "${esc(a.newEmail as string)}"}));
+        }
+      `);
+      if (a.newPhone) updates.push(`
+        const phones = p.phones();
+        if (phones.length > 0) {
+          phones[0].label = "work";
+          phones[0].value = "${esc(a.newPhone as string)}";
+        } else {
+          p.phones.push(app.Phone({label: "work", value: "${esc(a.newPhone as string)}"}));
+        }
+      `);
+      if (!updates.length) throw new Error("No updates specified");
+      return runJXA(`
+        const app = Application("Contacts");
+        ${findContactExact(name)}
+        const p = matches[0];
+        ${updates.join("\n")}
+        app.save();
+        "Contact updated: ${name}";
+      `);
+    },
+  },
+  {
     name: "contacts_delete",
-    desc: "Delete a contact by name",
+    desc: "Delete a contact by exact full name",
     params: {
       name: { type: "string", desc: "Contact name (must match exactly)", req: true },
     },

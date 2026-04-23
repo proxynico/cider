@@ -5,6 +5,12 @@ import { asDateExpr, esc, runAppleScript } from "../applescript.ts";
 const CAL_BIN = resolve(dirname(import.meta.path), "../helpers/cider-cal");
 const CAL_TIMEOUT = 30_000;
 
+function toEpochMsArg(iso: string): string {
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) throw new Error(`Invalid date: ${iso}`);
+  return String(date.getTime());
+}
+
 async function runCalBin(...args: string[]): Promise<string> {
   const proc = Bun.spawn([CAL_BIN, ...args], { stdout: "pipe", stderr: "pipe" });
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -52,16 +58,21 @@ const tools: ToolDef[] = [
     handle: () => runCalBin(),
   },
   {
-    name: "calendar_list_events",
-    desc: "List events in a date range (ISO 8601 dates)",
+    name: "calendar_search_events",
+    desc: "Search events in a date range, optionally filtered by calendar and text query",
     params: {
       startDate: { type: "string", desc: "Start date (ISO 8601)", req: true, date: true },
       endDate: { type: "string", desc: "End date (ISO 8601)", req: true, date: true },
       calendarName: { type: "string", desc: "Calendar name (searches all if omitted)" },
+      query: { type: "string", desc: "Text query for event title, location, or notes" },
     },
     handle: async (a) => {
-      const args = [a.startDate as string, a.endDate as string];
-      if (a.calendarName) args.push(a.calendarName as string);
+      const args = [
+        "--start-ms", toEpochMsArg(a.startDate as string),
+        "--end-ms", toEpochMsArg(a.endDate as string),
+      ];
+      if (a.calendarName) args.push("--calendar", a.calendarName as string);
+      if (a.query) args.push("--query", a.query as string);
       return runCalBin(...args);
     },
   },
@@ -98,7 +109,7 @@ const tools: ToolDef[] = [
   },
   {
     name: "calendar_update_event",
-    desc: "Update an existing event by title and calendar",
+    desc: "Update an existing event by exact title and calendar",
     params: {
       title: { type: "string", desc: "Current event title to find", req: true },
       calendar: { type: "string", desc: "Calendar containing the event", req: true },
@@ -106,6 +117,7 @@ const tools: ToolDef[] = [
       newStart: { type: "string", desc: "New start date (ISO 8601)", date: true },
       newEnd: { type: "string", desc: "New end date (ISO 8601)", date: true },
       newLocation: { type: "string", desc: "New location" },
+      newNotes: { type: "string", desc: "New notes" },
     },
     handle: async (a) => {
       const title = esc(a.title as string);
@@ -115,6 +127,7 @@ const tools: ToolDef[] = [
       if (a.newStart) updates.push(`set start date of ev to ${asDateExpr(a.newStart as string)}`);
       if (a.newEnd) updates.push(`set end date of ev to ${asDateExpr(a.newEnd as string)}`);
       if (a.newLocation) updates.push(`set location of ev to "${esc(a.newLocation as string)}"`);
+      if (a.newNotes) updates.push(`set description of ev to "${esc(a.newNotes as string)}"`);
       if (!updates.length) throw new Error("No updates specified");
       return runAppleScript(`
         tell application "Calendar"

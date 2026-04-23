@@ -7,9 +7,12 @@ const escapeHtml = (text: string): string =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
+const renderBodyFragment = (body: string): string =>
+  escapeHtml(body).replace(/\r\n?/g, "\n").replace(/\n/g, "<br>");
+
 const renderNoteBody = (title: string, body: string): string => {
   const safeTitle = escapeHtml(title);
-  const safeBody = escapeHtml(body).replace(/\r\n?/g, "\n").replace(/\n/g, "<br>");
+  const safeBody = renderBodyFragment(body);
   return `<h1>${safeTitle}</h1><br>${safeBody}`;
 };
 
@@ -18,6 +21,12 @@ const findNote = (title: string) => `
   if (count of theNotes) is 0 then error "Note not found: ${title}"
   if (count of theNotes) > 1 then error "Multiple notes match: ${title}"
   set n to item 1 of theNotes`;
+
+const findFolder = (name: string) => `
+  set theFolders to (every folder whose name is "${name}")
+  if (count of theFolders) is 0 then error "Folder not found: ${name}"
+  if (count of theFolders) > 1 then error "Multiple folders match: ${name}"
+  set f to item 1 of theFolders`;
 
 const tools: ToolDef[] = [
   {
@@ -43,11 +52,9 @@ const tools: ToolDef[] = [
       const folder = a.folder ? esc(a.folder as string) : null;
       if (folder) return runAppleScript(`
         tell application "Notes"
-          set flds to (every folder whose name is "${folder}")
-          if (count of flds) is 0 then error "Folder not found: ${folder}"
-          if (count of flds) > 1 then error "Multiple folders match: ${folder}"
+          ${findFolder(folder)}
           set output to ""
-          repeat with n in notes of item 1 of flds
+          repeat with n in notes of f
             set output to output & name of n & " | " & (modification date of n as string) & linefeed
           end repeat
           if output is "" then return "No notes in folder ${folder}"
@@ -121,6 +128,47 @@ const tools: ToolDef[] = [
           end repeat
           if output is "" then return "No notes matching: ${query}"
           return output
+        end tell
+      `);
+    },
+  },
+  {
+    name: "notes_append",
+    desc: "Append plain text to an existing note by exact title",
+    params: {
+      title: { type: "string", desc: "Note title", req: true },
+      text: { type: "string", desc: "Text to append", req: true },
+    },
+    handle: async (a) => {
+      const rawTitle = a.title as string;
+      const title = esc(rawTitle);
+      const fragment = esc(renderBodyFragment(a.text as string));
+      return runAppleScript(`
+        tell application "Notes"
+          ${findNote(title)}
+          set body of n to (body of n) & "<br>${fragment}"
+          return "Note appended: ${rawTitle}"
+        end tell
+      `);
+    },
+  },
+  {
+    name: "notes_move",
+    desc: "Move a note to a different folder by exact title",
+    params: {
+      title: { type: "string", desc: "Note title", req: true },
+      folder: { type: "string", desc: "Destination folder", req: true },
+    },
+    handle: async (a) => {
+      const rawTitle = a.title as string;
+      const title = esc(rawTitle);
+      const folder = esc(a.folder as string);
+      return runAppleScript(`
+        tell application "Notes"
+          ${findNote(title)}
+          ${findFolder(folder)}
+          move n to f
+          return "Note moved: ${rawTitle} -> ${folder}"
         end tell
       `);
     },
