@@ -132,19 +132,15 @@ const tools: ToolDef[] = [
       if (a.newOrg) updates.push(`p.organization = "${esc(a.newOrg as string)}";`);
       if (a.newTitle) updates.push(`p.jobTitle = "${esc(a.newTitle as string)}";`);
       if (a.newEmail) updates.push(`
-        const emails = p.emails();
-        if (emails.length > 0) {
-          emails[0].label = "work";
-          emails[0].value = "${esc(a.newEmail as string)}";
+        if (p.emails.length > 0) {
+          p.emails[0].value = "${esc(a.newEmail as string)}";
         } else {
           p.emails.push(app.Email({label: "work", value: "${esc(a.newEmail as string)}"}));
         }
       `);
       if (a.newPhone) updates.push(`
-        const phones = p.phones();
-        if (phones.length > 0) {
-          phones[0].label = "work";
-          phones[0].value = "${esc(a.newPhone as string)}";
+        if (p.phones.length > 0) {
+          p.phones[0].value = "${esc(a.newPhone as string)}";
         } else {
           p.phones.push(app.Phone({label: "work", value: "${esc(a.newPhone as string)}"}));
         }

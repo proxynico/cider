@@ -28,6 +28,19 @@ const findFolder = (name: string) => `
   if (count of theFolders) > 1 then error "Multiple folders match: ${name}"
   set f to item 1 of theFolders`;
 
+const replaceH1InBody = (newHeading: string) => `
+  set _oldBody to body of n
+  set AppleScript's text item delimiters to "</h1>"
+  set _parts to text items of _oldBody
+  if (count of _parts) < 2 then
+    set AppleScript's text item delimiters to ""
+    set body of n to "<h1>${newHeading}</h1><br>" & _oldBody
+  else
+    set _tail to items 2 thru -1 of _parts as text
+    set AppleScript's text item delimiters to ""
+    set body of n to "<h1>${newHeading}</h1>" & _tail
+  end if`;
+
 const tools: ToolDef[] = [
   {
     name: "notes_list_folders",
@@ -91,7 +104,7 @@ const tools: ToolDef[] = [
           tell ${target}
             make new note with properties {name:"${title}", body:"${body}"}
           end tell
-          return "Note created: ${rawTitle}"
+          return "Note created: ${title}"
         end tell
       `);
     },
@@ -140,14 +153,13 @@ const tools: ToolDef[] = [
       text: { type: "string", desc: "Text to append", req: true },
     },
     handle: async (a) => {
-      const rawTitle = a.title as string;
-      const title = esc(rawTitle);
+      const title = esc(a.title as string);
       const fragment = esc(renderBodyFragment(a.text as string));
       return runAppleScript(`
         tell application "Notes"
           ${findNote(title)}
           set body of n to (body of n) & "<br>${fragment}"
-          return "Note appended: ${rawTitle}"
+          return "Note appended: ${title}"
         end tell
       `);
     },
@@ -160,15 +172,14 @@ const tools: ToolDef[] = [
       folder: { type: "string", desc: "Destination folder", req: true },
     },
     handle: async (a) => {
-      const rawTitle = a.title as string;
-      const title = esc(rawTitle);
+      const title = esc(a.title as string);
       const folder = esc(a.folder as string);
       return runAppleScript(`
         tell application "Notes"
           ${findNote(title)}
           ${findFolder(folder)}
           move n to f
-          return "Note moved: ${rawTitle} -> ${folder}"
+          return "Note moved: ${title} -> ${folder}"
         end tell
       `);
     },
@@ -184,19 +195,23 @@ const tools: ToolDef[] = [
     handle: async (a) => {
       const rawTitle = a.title as string;
       const title = esc(rawTitle);
+      const newTitleRaw = a.newTitle as string | undefined;
+      const newBodyRaw = a.newBody as string | undefined;
       const updates: string[] = [];
-      if (a.newTitle) updates.push(`set name of n to "${esc(a.newTitle as string)}"`);
-      if (a.newBody) {
-        const heading = (a.newTitle as string | undefined) ?? rawTitle;
-        const html = esc(renderNoteBody(heading, a.newBody as string));
+      if (newTitleRaw) updates.push(`set name of n to "${esc(newTitleRaw)}"`);
+      if (newBodyRaw) {
+        const heading = newTitleRaw ?? rawTitle;
+        const html = esc(renderNoteBody(heading, newBodyRaw));
         updates.push(`set body of n to "${html}"`);
+      } else if (newTitleRaw) {
+        updates.push(replaceH1InBody(esc(newTitleRaw)));
       }
       if (!updates.length) throw new Error("No updates specified");
       return runAppleScript(`
         tell application "Notes"
           ${findNote(title)}
           ${updates.join("\n          ")}
-          return "Note updated: ${rawTitle}"
+          return "Note updated: ${title}"
         end tell
       `);
     },
@@ -208,13 +223,12 @@ const tools: ToolDef[] = [
       title: { type: "string", desc: "Note title to delete", req: true },
     },
     handle: async (a) => {
-      const rawTitle = a.title as string;
-      const title = esc(rawTitle);
+      const title = esc(a.title as string);
       return runAppleScript(`
         tell application "Notes"
           ${findNote(title)}
           delete n
-          return "Note deleted: ${rawTitle}"
+          return "Note deleted: ${title}"
         end tell
       `);
     },
