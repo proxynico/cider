@@ -1,3 +1,5 @@
+import { isoToAppleScriptDateExpr } from "./dates.ts";
+
 const TIMEOUT = 30_000;
 const PERM_RE = /errAEEventNotPermitted|-1743|-10004|Not authorized|not allowed assistive/i;
 const PERM_HINT = "\n\nPermission denied. Grant access in System Settings > Privacy & Security > Automation.";
@@ -9,9 +11,7 @@ export function esc(s: string): string {
 
 /** Convert ISO 8601 string to an AppleScript date expression. */
 export function asDateExpr(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) throw new Error(`Invalid date: ${iso}`);
-  return `((date "1/1/1970 00:00:00") + ${Math.floor(d.getTime() / 1000)})`;
+  return isoToAppleScriptDateExpr(iso);
 }
 
 async function run(flags: string[], script: string, timeout = TIMEOUT): Promise<string> {

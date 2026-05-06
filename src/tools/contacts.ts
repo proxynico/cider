@@ -14,6 +14,9 @@ const findContact = (name: string) => `
   if (matches.length === 0) throw new Error("Contact not found: ${name}");
   if (matches.length > 1) throw new Error("Multiple contacts match: ${name}");`;
 
+const dryRun = (action: string, details: Record<string, unknown>): string =>
+  `Dry run: ${action}\n${JSON.stringify(details, null, 2)}`;
+
 const findContactExact = (name: string) => `
   const matches = app.people.whose({ name: "${name}" });
   if (matches.length === 0) throw new Error("Contact not found: ${name}");
@@ -24,16 +27,22 @@ const tools: ToolDef[] = [
     name: "contacts_list",
     desc: "List contacts (name and organization)",
     params: {
-      limit: { type: "number", desc: "Max contacts to return (default: all)", int: true, min: 1 },
+      limit: { type: "number", desc: "Max contacts to return (default: all)", int: true, min: 1, max: 1000 },
     },
     handle: async (a) => {
       const lim = a.limit as number | undefined;
-      const slice = lim ? `.slice(0, ${lim})` : "";
       return runJXA(`
         const app = Application("Contacts");
-        const firstNames = app.people.firstName()${slice};
-        const lastNames = app.people.lastName()${slice};
-        const orgs = app.people.organization()${slice};
+        const people = app.people();
+        const count = ${lim ?? "people.length"};
+        const firstNames = [];
+        const lastNames = [];
+        const orgs = [];
+        for (let i = 0; i < Math.min(count, people.length); i++) {
+          firstNames.push(people[i].firstName());
+          lastNames.push(people[i].lastName());
+          orgs.push(people[i].organization());
+        }
         ${FMT}
         lines.length === 0 ? "No contacts found" : lines.join("\\n");
       `);
@@ -92,10 +101,21 @@ const tools: ToolDef[] = [
       phone: { type: "string", desc: "Phone number" },
       org: { type: "string", desc: "Organization" },
       title: { type: "string", desc: "Job title" },
+      dryRun: { type: "boolean", desc: "Preview the contact without creating it" },
     },
     handle: async (a) => {
       const first = esc(a.firstName as string);
       const last = esc(a.lastName as string);
+      if (a.dryRun) {
+        return dryRun("create contact", {
+          firstName: a.firstName,
+          lastName: a.lastName,
+          email: a.email ?? "",
+          phone: a.phone ?? "",
+          org: a.org ?? "",
+          title: a.title ?? "",
+        });
+      }
       const props = [`firstName: "${first}"`, `lastName: "${last}"`];
       if (a.org) props.push(`organization: "${esc(a.org as string)}"`);
       if (a.title) props.push(`jobTitle: "${esc(a.title as string)}"`);
@@ -123,29 +143,50 @@ const tools: ToolDef[] = [
       newPhone: { type: "string", desc: "New primary phone number" },
       newOrg: { type: "string", desc: "New organization" },
       newTitle: { type: "string", desc: "New job title" },
+      dryRun: { type: "boolean", desc: "Preview the update without changing Contacts" },
     },
     handle: async (a) => {
       const name = esc(a.name as string);
       const updates: string[] = [];
-      if (a.newFirstName) updates.push(`p.firstName = "${esc(a.newFirstName as string)}";`);
-      if (a.newLastName) updates.push(`p.lastName = "${esc(a.newLastName as string)}";`);
-      if (a.newOrg) updates.push(`p.organization = "${esc(a.newOrg as string)}";`);
-      if (a.newTitle) updates.push(`p.jobTitle = "${esc(a.newTitle as string)}";`);
-      if (a.newEmail) updates.push(`
+      const updateDetails: Record<string, unknown> = {};
+      if (a.newFirstName) {
+        updates.push(`p.firstName = "${esc(a.newFirstName as string)}";`);
+        updateDetails.newFirstName = a.newFirstName;
+      }
+      if (a.newLastName) {
+        updates.push(`p.lastName = "${esc(a.newLastName as string)}";`);
+        updateDetails.newLastName = a.newLastName;
+      }
+      if (a.newOrg) {
+        updates.push(`p.organization = "${esc(a.newOrg as string)}";`);
+        updateDetails.newOrg = a.newOrg;
+      }
+      if (a.newTitle) {
+        updates.push(`p.jobTitle = "${esc(a.newTitle as string)}";`);
+        updateDetails.newTitle = a.newTitle;
+      }
+      if (a.newEmail) {
+        updates.push(`
         if (p.emails.length > 0) {
           p.emails[0].value = "${esc(a.newEmail as string)}";
         } else {
           p.emails.push(app.Email({label: "work", value: "${esc(a.newEmail as string)}"}));
         }
       `);
-      if (a.newPhone) updates.push(`
+        updateDetails.newEmail = a.newEmail;
+      }
+      if (a.newPhone) {
+        updates.push(`
         if (p.phones.length > 0) {
           p.phones[0].value = "${esc(a.newPhone as string)}";
         } else {
           p.phones.push(app.Phone({label: "work", value: "${esc(a.newPhone as string)}"}));
         }
       `);
+        updateDetails.newPhone = a.newPhone;
+      }
       if (!updates.length) throw new Error("No updates specified");
+      if (a.dryRun) return dryRun("update contact", { name: a.name, updates: updateDetails });
       return runJXA(`
         const app = Application("Contacts");
         ${findContactExact(name)}
@@ -161,9 +202,11 @@ const tools: ToolDef[] = [
     desc: "Delete a contact by exact full name",
     params: {
       name: { type: "string", desc: "Contact name (must match exactly)", req: true },
+      dryRun: { type: "boolean", desc: "Preview the deletion without changing Contacts" },
     },
     handle: async (a) => {
       const name = esc(a.name as string);
+      if (a.dryRun) return dryRun("delete contact", { name: a.name });
       return runJXA(`
         const app = Application("Contacts");
         ${findContactExact(name)}

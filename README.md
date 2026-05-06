@@ -2,7 +2,7 @@
 
 Single MCP server that gives Claude Code (or any MCP client) access to macOS Apple apps via AppleScript, JXA, and EventKit.
 
-**20 tools** across 3 apps: Calendar, Notes, and Contacts.
+**21 tools** across Calendar, Notes, Contacts, and local diagnostics.
 
 ## Quick Start
 
@@ -17,9 +17,9 @@ bun run build:swift    # compile calendar helper (one-time)
 claude mcp add --scope user cider -- bun run ~/developer/cider/src/index.ts
 ```
 
-Cider is **one MCP server**. Register it once and it exposes all Calendar, Notes, and Contacts tools.
+Cider is **one MCP server**. Register it once and it exposes all Calendar, Notes, Contacts, and diagnostic tools.
 
-Restart Claude Code. Tools appear automatically. macOS will prompt for Automation permissions on first use of each app.
+Restart Claude Code. Tools appear automatically. macOS will prompt for app permissions on first use.
 
 ## Tools
 
@@ -30,13 +30,14 @@ Restart Claude Code. Tools appear automatically. macOS will prompt for Automatio
 | `calendar_list_calendars` | List all calendars | — |
 | `calendar_search_events` | Search events in a date range | `startDate`, `endDate` |
 | `calendar_create_event` | Create a new event | `title`, `startDate`, `endDate` |
-| `calendar_update_event` | Update an existing event | `title`, `calendar` |
-| `calendar_delete_event` | Delete an event | `title`, `calendar` |
+| `calendar_update_event` | Update an existing event | `title` |
+| `calendar_delete_event` | Delete an event | `title` |
 
 **Optional params:**
 - `calendarName`, `query` (`calendar_search_events`)
-- `calendar`, `location`, `notes` (`calendar_create_event`)
-- `newTitle`, `newStart`, `newEnd`, `newLocation`, `newNotes` (`calendar_update_event`)
+- `calendar`, `location`, `notes`, `dryRun` (`calendar_create_event`)
+- `calendar`, `newTitle`, `newStart`, `newEnd`, `newLocation`, `newNotes`, `dryRun` (`calendar_update_event`)
+- `calendar`, `dryRun` (`calendar_delete_event`)
 
 ### Notes (9 tools)
 
@@ -53,7 +54,10 @@ Restart Claude Code. Tools appear automatically. macOS will prompt for Automatio
 | `notes_delete` | Delete a note by title | `title` |
 
 **Optional params:**
-- `folder` (`notes_list`, `notes_create`)
+- `folder`, `limit` (`notes_list`)
+- `folder`, `dryRun` (`notes_create`)
+- `limit` (`notes_search`)
+- `dryRun` (`notes_append`, `notes_move`, `notes_update`, `notes_delete`)
 - `newTitle`, `newBody` (`notes_update`)
 
 ### Contacts (6 tools)
@@ -69,8 +73,15 @@ Restart Claude Code. Tools appear automatically. macOS will prompt for Automatio
 
 **Optional params:**
 - `limit` (`contacts_list`)
-- `email`, `phone`, `org`, `title` (`contacts_create`)
-- `newFirstName`, `newLastName`, `newEmail`, `newPhone`, `newOrg`, `newTitle` (`contacts_update`)
+- `email`, `phone`, `org`, `title`, `dryRun` (`contacts_create`)
+- `newFirstName`, `newLastName`, `newEmail`, `newPhone`, `newOrg`, `newTitle`, `dryRun` (`contacts_update`)
+- `dryRun` (`contacts_delete`)
+
+### Diagnostics (1 tool)
+
+| Tool | Description | Required Params |
+|------|-------------|-----------------|
+| `doctor` | Check Bun, osascript, and compiled calendar helper readiness | - |
 
 ## Date Format
 
@@ -88,28 +99,28 @@ src/
   applescript.ts    Shared runners (AppleScript + JXA) with 30s timeout + permission detection
   types.ts          ToolDef interface, Zod schema generation
   tools/
-    calendar.ts     EventKit binary for reads, AppleScript for writes
+    calendar.ts     EventKit binary for reads and writes
     notes.ts        AppleScript
     contacts.ts     JXA with batch property access
+    doctor.ts       Local runtime checks
   helpers/
-    cider-cal.swift Compiled EventKit helper for fast calendar queries
+    cider-cal.swift Compiled EventKit helper for fast calendar operations
 ```
 
 - **Runtime:** Bun + TypeScript
 - **Transport:** stdio (MCP protocol)
-- **Execution:** Calendar reads use a compiled Swift binary via EventKit for indexed calendar/event queries. Calendar writes use AppleScript. Contacts use JXA with batch property access. Notes use AppleScript.
+- **Execution:** Calendar reads and writes use a compiled Swift binary via EventKit for indexed calendar/event access. Contacts use JXA. Notes use AppleScript.
 - **Timeout:** AppleScript/JXA calls and the calendar helper use a 30-second timeout to prevent indefinite hangs.
-- **Auth:** macOS Automation permissions handle access control. No API keys needed.
+- **Auth:** macOS Calendars and Automation permissions handle access control. No API keys needed.
 
 ## Permissions
 
-On first use of each app, macOS will show a dialog:
+On first use, macOS may show permission dialogs:
 
-> "Terminal.app wants to control Calendar.app. Allow?"
+- Calendar uses EventKit and needs **System Settings > Privacy & Security > Calendars** access.
+- Notes and Contacts use AppleScript/JXA and may need **System Settings > Privacy & Security > Automation** access for the terminal, IDE, or MCP client process.
 
-Click **OK**. Manage in **System Settings > Privacy & Security > Automation**.
-
-If running from an IDE (VS Code, Cursor), the IDE is the app requesting permission.
+Run `doctor` to check local dependency readiness and Calendar authorization state.
 
 ## Development
 
@@ -130,11 +141,18 @@ MIT
 - Tool inputs are validated by the MCP SDK via Zod schemas.
 - Missing/invalid arguments return MCP `isError` responses.
 - Missing entities and ambiguous matches inside scripts return explicit errors.
-- macOS permission errors (e.g. Automation access denied) are detected and include actionable guidance pointing to System Settings.
+- macOS permission errors are detected and include actionable guidance pointing to System Settings.
 - Date parameters require strict ISO 8601 input and are validated before execution.
+- Date-only inputs are treated as local midnight. UTC/offset date-times are converted to the same instant in local Calendar time before writing.
 - Notes `body`/`text` fields are treated as plain text when written.
 - `contacts_update` and `contacts_delete` require an exact full-name match.
+- Mutating tools accept `dryRun: true` to preview the target action without changing Apple apps.
 
-## Notes about repository guidance
+## Local Checks
 
-- Source-of-truth local notes are tracked in `.claude/napkin.md`.
+```bash
+bun run test
+bun run build:swift
+```
+
+Run the MCP `doctor` tool after registration to confirm Bun, `osascript`, the compiled calendar helper, and Calendar authorization.

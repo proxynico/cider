@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isIsoDateString } from "./dates.ts";
 
 export interface Param {
   type: "string" | "boolean" | "number";
@@ -15,68 +16,6 @@ export interface ToolDef {
   desc: string;
   params?: Record<string, Param>;
   handle(args: Record<string, unknown>): Promise<string>;
-}
-
-const ISO_DATE_RE =
-  /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})(?:T(?<hour>\d{2}):(?<minute>\d{2})(?::(?<second>\d{2})(?<fraction>\.\d{1,3})?)?(?<zone>Z|[+-]\d{2}:\d{2})?)?$/;
-
-export function isIsoDateString(value: string): boolean {
-  const match = ISO_DATE_RE.exec(value);
-  if (!match?.groups) return false;
-
-  const year = Number(match.groups.year);
-  const month = Number(match.groups.month);
-  const day = Number(match.groups.day);
-
-  if (!match.groups.hour) {
-    const date = new Date(Date.UTC(year, month - 1, day));
-    return (
-      date.getUTCFullYear() === year &&
-      date.getUTCMonth() === month - 1 &&
-      date.getUTCDate() === day
-    );
-  }
-
-  const hour = Number(match.groups.hour);
-  const minute = Number(match.groups.minute);
-  const second = Number(match.groups.second ?? "0");
-  const ms = Number((match.groups.fraction ?? "").slice(1).padEnd(3, "0") || "0");
-  const zone = match.groups.zone;
-
-  if (!zone) {
-    const date = new Date(year, month - 1, day, hour, minute, second, ms);
-    return (
-      date.getFullYear() === year &&
-      date.getMonth() === month - 1 &&
-      date.getDate() === day &&
-      date.getHours() === hour &&
-      date.getMinutes() === minute &&
-      date.getSeconds() === second &&
-      date.getMilliseconds() === ms
-    );
-  }
-
-  const sign = zone[0] === "-" ? -1 : 1;
-  let offsetHour = 0;
-  let offsetMinute = 0;
-  if (zone !== "Z") {
-    const parts = zone.slice(1).split(":");
-    offsetHour = Number(parts[0] ?? 0);
-    offsetMinute = Number(parts[1] ?? 0);
-  }
-  const offsetMs = sign * ((offsetHour * 60) + offsetMinute) * 60_000;
-  const utcMs = Date.UTC(year, month - 1, day, hour, minute, second, ms) - offsetMs;
-  const zoned = new Date(utcMs + offsetMs);
-
-  return (
-    zoned.getUTCFullYear() === year &&
-    zoned.getUTCMonth() === month - 1 &&
-    zoned.getUTCDate() === day &&
-    zoned.getUTCHours() === hour &&
-    zoned.getUTCMinutes() === minute &&
-    zoned.getUTCSeconds() === second &&
-    zoned.getUTCMilliseconds() === ms
-  );
 }
 
 function toZodType(p: Param): z.ZodType {
@@ -106,4 +45,3 @@ export function toZodShape(def: ToolDef): Record<string, z.ZodType> {
   }
   return shape;
 }
-

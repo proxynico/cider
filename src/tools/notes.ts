@@ -16,6 +16,9 @@ const renderNoteBody = (title: string, body: string): string => {
   return `<h1>${safeTitle}</h1><br>${safeBody}`;
 };
 
+const dryRun = (action: string, details: Record<string, unknown>): string =>
+  `Dry run: ${action}\n${JSON.stringify(details, null, 2)}`;
+
 const findNote = (title: string) => `
   set theNotes to (every note whose name is "${title}")
   if (count of theNotes) is 0 then error "Note not found: ${title}"
@@ -60,15 +63,21 @@ const tools: ToolDef[] = [
     desc: "List notes, optionally filtered by folder",
     params: {
       folder: { type: "string", desc: "Folder name (lists all if omitted)" },
+      limit: { type: "number", desc: "Max notes to return", int: true, min: 1, max: 500 },
     },
     handle: async (a) => {
       const folder = a.folder ? esc(a.folder as string) : null;
+      const limit = a.limit ? Number(a.limit) : 0;
       if (folder) return runAppleScript(`
         tell application "Notes"
           ${findFolder(folder)}
+          set _limit to ${limit}
+          set _count to 0
           set output to ""
           repeat with n in notes of f
+            if _limit is not 0 and _count >= _limit then exit repeat
             set output to output & name of n & " | " & (modification date of n as string) & linefeed
+            set _count to _count + 1
           end repeat
           if output is "" then return "No notes in folder ${folder}"
           return output
@@ -76,9 +85,13 @@ const tools: ToolDef[] = [
       `);
       return runAppleScript(`
         tell application "Notes"
+          set _limit to ${limit}
+          set _count to 0
           set output to ""
           repeat with n in notes
+            if _limit is not 0 and _count >= _limit then exit repeat
             set output to output & name of n & " | " & (modification date of n as string) & linefeed
+            set _count to _count + 1
           end repeat
           if output is "" then return "No notes found"
           return output
@@ -93,12 +106,14 @@ const tools: ToolDef[] = [
       title: { type: "string", desc: "Note title", req: true },
       body: { type: "string", desc: "Note body (plain text)", req: true },
       folder: { type: "string", desc: "Folder name (uses default if omitted)" },
+      dryRun: { type: "boolean", desc: "Preview the note without creating it" },
     },
     handle: async (a) => {
       const rawTitle = a.title as string;
       const title = esc(rawTitle);
       const body = esc(renderNoteBody(rawTitle, a.body as string));
       const target = a.folder ? `folder "${esc(a.folder as string)}"` : "default account";
+      if (a.dryRun) return dryRun("create note", { title: rawTitle, folder: a.folder ?? "default", body: a.body });
       return runAppleScript(`
         tell application "Notes"
           tell ${target}
@@ -130,14 +145,20 @@ const tools: ToolDef[] = [
     desc: "Search notes by title",
     params: {
       query: { type: "string", desc: "Search query", req: true },
+      limit: { type: "number", desc: "Max notes to return", int: true, min: 1, max: 500 },
     },
     handle: async (a) => {
       const query = esc(a.query as string);
+      const limit = a.limit ? Number(a.limit) : 0;
       return runAppleScript(`
         tell application "Notes"
+          set _limit to ${limit}
+          set _count to 0
           set output to ""
           repeat with n in (every note whose name contains "${query}")
+            if _limit is not 0 and _count >= _limit then exit repeat
             set output to output & name of n & " | " & (modification date of n as string) & linefeed
+            set _count to _count + 1
           end repeat
           if output is "" then return "No notes matching: ${query}"
           return output
@@ -151,10 +172,12 @@ const tools: ToolDef[] = [
     params: {
       title: { type: "string", desc: "Note title", req: true },
       text: { type: "string", desc: "Text to append", req: true },
+      dryRun: { type: "boolean", desc: "Preview the append without changing Notes" },
     },
     handle: async (a) => {
       const title = esc(a.title as string);
       const fragment = esc(renderBodyFragment(a.text as string));
+      if (a.dryRun) return dryRun("append note", { title: a.title, text: a.text });
       return runAppleScript(`
         tell application "Notes"
           ${findNote(title)}
@@ -170,10 +193,12 @@ const tools: ToolDef[] = [
     params: {
       title: { type: "string", desc: "Note title", req: true },
       folder: { type: "string", desc: "Destination folder", req: true },
+      dryRun: { type: "boolean", desc: "Preview the move without changing Notes" },
     },
     handle: async (a) => {
       const title = esc(a.title as string);
       const folder = esc(a.folder as string);
+      if (a.dryRun) return dryRun("move note", { title: a.title, folder: a.folder });
       return runAppleScript(`
         tell application "Notes"
           ${findNote(title)}
@@ -191,6 +216,7 @@ const tools: ToolDef[] = [
       title: { type: "string", desc: "Current note title to find", req: true },
       newTitle: { type: "string", desc: "New title" },
       newBody: { type: "string", desc: "New body text (plain text)" },
+      dryRun: { type: "boolean", desc: "Preview the update without changing Notes" },
     },
     handle: async (a) => {
       const rawTitle = a.title as string;
@@ -204,9 +230,10 @@ const tools: ToolDef[] = [
         const html = esc(renderNoteBody(heading, newBodyRaw));
         updates.push(`set body of n to "${html}"`);
       } else if (newTitleRaw) {
-        updates.push(replaceH1InBody(esc(newTitleRaw)));
+        updates.push(replaceH1InBody(esc(escapeHtml(newTitleRaw))));
       }
       if (!updates.length) throw new Error("No updates specified");
+      if (a.dryRun) return dryRun("update note", { title: rawTitle, newTitle: newTitleRaw, newBody: newBodyRaw });
       return runAppleScript(`
         tell application "Notes"
           ${findNote(title)}
@@ -221,9 +248,11 @@ const tools: ToolDef[] = [
     desc: "Delete a note by title",
     params: {
       title: { type: "string", desc: "Note title to delete", req: true },
+      dryRun: { type: "boolean", desc: "Preview the deletion without changing Notes" },
     },
     handle: async (a) => {
       const title = esc(a.title as string);
+      if (a.dryRun) return dryRun("delete note", { title: a.title });
       return runAppleScript(`
         tell application "Notes"
           ${findNote(title)}

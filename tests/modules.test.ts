@@ -5,8 +5,9 @@ import { z } from "zod";
 import calendar from "../src/tools/calendar.ts";
 import notes from "../src/tools/notes.ts";
 import contacts from "../src/tools/contacts.ts";
+import doctor from "../src/tools/doctor.ts";
 
-const allTools = [...calendar, ...notes, ...contacts];
+const allTools = [...calendar, ...notes, ...contacts, ...doctor];
 const find = (name: string) => allTools.find(t => t.name === name)!;
 const parse = (name: string, input: unknown) => z.object(toZodShape(find(name))).parse(input);
 const ok = (name: string, input: unknown) => z.object(toZodShape(find(name))).safeParse(input).success;
@@ -15,6 +16,21 @@ const modules: [string, ToolDef[]][] = [
   ["calendar", calendar],
   ["notes", notes],
   ["contacts", contacts],
+  ["doctor", doctor],
+];
+
+const mutatingTools = [
+  "calendar_create_event",
+  "calendar_update_event",
+  "calendar_delete_event",
+  "notes_create",
+  "notes_append",
+  "notes_move",
+  "notes_update",
+  "notes_delete",
+  "contacts_create",
+  "contacts_update",
+  "contacts_delete",
 ];
 
 describe("module structure", () => {
@@ -37,6 +53,10 @@ describe("module structure", () => {
 });
 
 describe("schema accepts valid inputs", () => {
+  test("doctor", () => {
+    expect(() => parse("doctor", {})).not.toThrow();
+  });
+
   test("calendar_list_calendars", () => {
     expect(() => parse("calendar_list_calendars", {})).not.toThrow();
   });
@@ -61,7 +81,7 @@ describe("schema accepts valid inputs", () => {
 
   test("calendar_update_event", () => {
     expect(() => parse("calendar_update_event", {
-      title: "Meeting", calendar: "Work", newTitle: "All-hands",
+      title: "Meeting", newTitle: "All-hands",
     })).not.toThrow();
   });
 
@@ -73,7 +93,7 @@ describe("schema accepts valid inputs", () => {
 
   test("calendar_delete_event", () => {
     expect(() => parse("calendar_delete_event", {
-      title: "Meeting", calendar: "Work",
+      title: "Meeting",
     })).not.toThrow();
   });
 
@@ -166,6 +186,19 @@ describe("schema accepts valid inputs", () => {
   test("contacts_delete", () => {
     expect(() => parse("contacts_delete", { name: "John Doe" })).not.toThrow();
   });
+
+  test("mutating tools accept dryRun", () => {
+    for (const name of mutatingTools) {
+      expect(find(name).params?.dryRun?.type).toBe("boolean");
+    }
+  });
+
+  test("notes list and search accept bounded limits", () => {
+    expect(() => parse("notes_list", { limit: 50 })).not.toThrow();
+    expect(() => parse("notes_search", { query: "meeting", limit: 50 })).not.toThrow();
+    expect(ok("notes_list", { limit: 501 })).toBe(false);
+    expect(ok("notes_search", { query: "meeting", limit: 501 })).toBe(false);
+  });
 });
 
 describe("schema rejects invalid inputs", () => {
@@ -186,5 +219,35 @@ describe("schema rejects invalid inputs", () => {
   test("rejects invalid limit", () => {
     expect(ok("contacts_list", { limit: 0 })).toBe(false);
     expect(ok("contacts_list", { limit: 1.5 })).toBe(false);
+    expect(ok("contacts_list", { limit: 1001 })).toBe(false);
+  });
+});
+
+describe("dry-run handlers", () => {
+  test("calendar create dry-run does not execute Calendar", async () => {
+    const text = await find("calendar_create_event").handle({
+      title: "Dry Run",
+      startDate: "2024-03-15T10:30:00Z",
+      endDate: "2024-03-15T11:00:00Z",
+      dryRun: true,
+    });
+    expect(text).toContain("Dry run: create calendar event");
+  });
+
+  test("notes update dry-run does not execute Notes", async () => {
+    const text = await find("notes_update").handle({
+      title: "Dry Run",
+      newTitle: "Dry Run 2",
+      dryRun: true,
+    });
+    expect(text).toContain("Dry run: update note");
+  });
+
+  test("contacts delete dry-run does not execute Contacts", async () => {
+    const text = await find("contacts_delete").handle({
+      name: "Dry Run",
+      dryRun: true,
+    });
+    expect(text).toContain("Dry run: delete contact");
   });
 });

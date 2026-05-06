@@ -54,6 +54,11 @@ describe("toZodShape validation", () => {
     expect(ok(mock, { title: "hi", date: "2024-02-30" })).toBe(false);
   });
 
+  test("rejects impossible ISO timezone offsets", () => {
+    expect(ok(mock, { title: "hi", date: "2024-01-01T10:00:00+99:99" })).toBe(false);
+    expect(ok(mock, { title: "hi", date: "2024-01-01T10:00:00+23:60" })).toBe(false);
+  });
+
   test("rejects non-integer", () => {
     expect(ok(mock, { title: "hi", count: 1.5 })).toBe(false);
   });
